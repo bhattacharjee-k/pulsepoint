@@ -1,0 +1,26 @@
+{
+  "name": "@pulsepoint/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "tsx ../../migrations/run.ts && tsx ../../seed/seed.ts && vitest run"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.1",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/rate-limit": "^10.1.0",
+    "@fastify/session": "^11.0.0",
+    "bcrypt": "^5.1.1",
+    "fastify": "^5.0.0",
+    "pg": "^8.13.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/pg": "^8.11.10",
+    "vitest": "^2.1.5"
+  }
+}
