@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Vite cache
+**/.vite/
+
+# Environment (keep examples)
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local agent / IDE
+.claude/
+.cursor/
+
+# Logs & coverage
+*.log
+npm-debug.log*
+coverage/
+
+# Docker local overrides (if any)
+docker-compose.override.yml
