@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint — APIs &amp; Threat Model · Part 4</title>
+<style>
+  :root{
+    --alpha:#2563eb; --delta:#d97706; --ink:#1f2937; --muted:#6b7280;
+    --line:#d1d5db; --bg:#f8fafc; --accent:#0f766e; --ok:#166534; --bad:#be123c;
+    --pub:#0ea5e9; --adm:#7c3aed;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0 0 80px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+  header{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:32px 24px;}
+  header h1{margin:0 0 6px;font-size:26px;}
+  header p{margin:0;color:#cbd5e1;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;}
+  section{margin-top:40px;}
+  h2{font-size:20px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:8px;}
+  .lead{color:var(--muted);font-size:15px;margin:0 0 18px;}
+  .note{background:#ecfeff;border-left:4px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+  .warn{background:#fef2f2;border-left:4px solid var(--bad);padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,monospace;}
+
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .surface{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .surface h3{margin:0;padding:14px;color:#fff;font-size:16px;}
+  .surface.pub h3{background:var(--pub);}
+  .surface.adm h3{background:var(--adm);}
+  .surface dl{margin:0;padding:6px 16px 16px;}
+  .surface dt{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:12px;font-weight:700;}
+  .surface dd{margin:3px 0 0;font-size:14px;}
+  .surface dd.threat{color:var(--bad);} .surface dd.def{color:var(--ok);}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--line);margin-top:8px;}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid #eef2f7;vertical-align:top;}
+  th{background:#f1f5f9;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);}
+  .pick{font-weight:700;color:var(--ok);}
+
+  .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px;}
+  .flag{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;}
+  .flag b{font-family:monospace;color:var(--adm);}
+
+  .door{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;}
+  .dcard{flex:1;min-width:240px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;}
+  .dcard.open{border-top:4px solid var(--pub);}
+  .dcard.locked{border-top:4px solid var(--adm);}
+  .dcard h4{margin:0 0 6px;}
+
+  /* interactive */
+  .sim{background:#fff;border:2px solid var(--ink);border-radius:12px;padding:18px;}
+  .atk{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;padding:12px 14px;border-radius:8px;margin-bottom:8px;cursor:pointer;font-size:14px;}
+  .atk:hover{background:#f8fafc;}
+  .atk.active{border-color:var(--ink);background:#0f172a;color:#fff;}
+  .result{margin-top:14px;padding:16px;border-radius:10px;background:#dcfce7;border:1px solid #86efac;font-size:14px;}
+  .result .verdict{font-weight:800;color:var(--ok);display:block;margin-bottom:6px;font-size:16px;}
+  footer{margin-top:50px;padding-top:20px;border-top:2px solid var(--line);color:var(--muted);font-size:14px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PulsePoint — Two APIs, Two Threat Models</h1>
+    <p>Stage 2a architecture · Part 4 of ~5 · Why the public door and the staff door are built differently</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>A · Two surfaces, deliberately different shapes</h2>
+    <p class="lead">The whole point: a door open to the entire internet and a door only staff use should NOT be built the same way.</p>
+    <div class="twocol">
+      <div class="surface pub">
+        <h3>🌐 Public Ingest API</h3>
+        <dl>
+          <dt>Who calls it</dt><dd>The widget, from anyone's website</dd>
+          <dt>Auth</dt><dd><code>X-Tenant-Key: pk_…</code> (routes to a tenant; not secret)</dd>
+          <dt>Can do</dt><dd>Submit feedback (insert-only) · read its own widget config</dd>
+          <dt>Main threats</dt>
+          <dd class="threat">Spam floods · junk/oversized payloads · stored XSS · forged tenant</dd>
+          <dt>Key defenses</dt>
+          <dd class="def">Rate limit (per key + per IP) · strict validation · tenant from key only · insert-only DB role</dd>
+        </dl>
+      </div>
+      <div class="surface adm">
+        <h3>🔐 Admin API</h3>
+        <dl>
+          <dt>Who calls it</dt><dd>The dashboard, used by logged-in staff</dd>
+          <dt>Auth</dt><dd>Session cookie (logged in with email + password)</dd>
+          <dt>Can do</dt><dd>List / filter / search feedback · update status · notes · assign · settings</dd>
+          <dt>Main threats</dt>
+          <dd class="threat">Session theft · CSRF · IDOR · privilege escalation (member→admin)</dd>
+          <dt>Key defenses</dt>
+          <dd class="def">HttpOnly+SameSite cookie · tenant from session · RLS backstop · app-layer role checks</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>B · Auth choice — why session cookies (not JWT)</h2>
+    <p class="lead">Both are industry-standard. For a single same-origin dashboard, a server-side <strong>session</strong> is the simpler, safer fit.</p>
+    <table>
+      <tr><th></th><th>Session cookie <span class="pick">(our pick)</span></th><th>JWT token</th></tr>
+      <tr><td><b>How it works</b></td><td>Server stores the session; browser holds a cookie pointing to it</td><td>Server hands the browser a signed token it carries around</td></tr>
+      <tr><td><b>Log someone out?</b></td><td class="pick">Easy — delete the session</td><td>Hard — token is valid until it expires</td></tr>
+      <tr><td><b>XSS exposure</b></td><td class="pick">Cookie can be HttpOnly (JS can't read it)</td><td>Often stored where JS (and XSS) can read it</td></tr>
+      <tr><td><b>Best when</b></td><td class="pick">One app, same origin (us)</td><td>Many services / different origins / huge scale</td></tr>
+    </table>
+    <p style="margin-top:14px;">The cookie carries these flags, and each one closes a specific hole:</p>
+    <div class="flags">
+      <div class="flag"><b>HttpOnly</b> — JavaScript can't read the cookie, so a stored-XSS script can't steal the session.</div>
+      <div class="flag"><b>SameSite=Lax</b> — other sites can't quietly use your cookie → blocks most CSRF.</div>
+      <div class="flag"><b>Secure</b> — only sent over HTTPS (in production).</div>
+    </div>
+    <div class="note">💡 <strong>The honest downside</strong> (worth saying out loud): sessions need a server-side store and don't "free-scale" across many servers the way stateless JWTs do. For this product that trade is clearly worth it — and naming the downside is exactly the senior signal the challenge rewards.</div>
+  </section>
+
+  <section>
+    <h2>C · The CORS myth — the #1 thing people get wrong</h2>
+    <div class="warn"><strong>CORS is NOT a security guard.</strong> It's a <em>browser</em> rule about whether one website's JavaScript may <em>read the response</em> from another website. It does nothing to stop a bot, <code>curl</code>, or a script from <em>sending</em> a request.</div>
+    <div class="door">
+      <div class="dcard open">
+        <h4>🌐 Public ingest → CORS wide open</h4>
+        <p style="font-size:13px;">The widget lives on Alpha's and Delta's sites (different origins), so the endpoint must accept calls from anywhere: <code>Access-Control-Allow-Origin: *</code>, and <strong>no cookies</strong>. CORS being open here is fine — it was never the protection. The real protection is rate-limiting + validation + insert-only.</p>
+      </div>
+      <div class="dcard locked">
+        <h4>🔐 Admin API → CORS locked down</h4>
+        <p style="font-size:13px;">Only the dashboard's own origin may call it, and it uses cookies. Tight CORS + <code>SameSite</code> cookies means a malicious site's JS can't read your feedback even if it tries — it has no session and the browser won't share the response.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>D · Guarding the public slot — rate limits, validation, XSS</h2>
+    <ul style="font-size:14px;">
+      <li><strong>Rate limiting</strong> — cap requests <em>per public key</em> (one noisy tenant can't drown the rest) <em>and per IP</em> (one bot can't flood). Over the limit → <code>429 Too Many Requests</code>. This is the "noisy-neighbor" containment.</li>
+      <li><strong>Validation</strong> — reject anything that isn't a known <code>type</code>, a too-long message, a rating outside 1–5, or a malformed email. Small, strict payloads only.</li>
+      <li><strong>Stored XSS defense</strong> — someone <em>will</em> submit <code>&lt;script&gt;…&lt;/script&gt;</code> as their message. We store it as plain text and <strong>escape it when the dashboard renders it</strong>, so it shows up as harmless characters, not running code. (React does this automatically — a reason the stack choice helps here.)</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>E · Admin API conventions (the "production-grade" stuff)</h2>
+    <div class="twocol">
+      <div>
+        <p style="font-size:14px;margin:0 0 6px;"><strong>Endpoints (all under <code>/api/v1</code>):</strong></p>
+        <table>
+          <tr><th>Method + path</th><th>Does</th></tr>
+          <tr><td><code>POST /auth/login</code></td><td>start a session</td></tr>
+          <tr><td><code>GET /feedback</code></td><td>list · filter · search · paginate</td></tr>
+          <tr><td><code>GET /feedback/:id</code></td><td>one item + notes</td></tr>
+          <tr><td><code>PATCH /feedback/:id</code></td><td>status / assignee</td></tr>
+          <tr><td><code>POST /feedback/:id/notes</code></td><td>add a note</td></tr>
+          <tr><td><code>GET /stats</code></td><td>dashboard totals</td></tr>
+          <tr><td><code>GET /team</code> · <code>/settings</code></td><td>admin-only</td></tr>
+        </table>
+      </div>
+      <div>
+        <p style="font-size:14px;margin:0 0 6px;"><strong>Conventions:</strong></p>
+        <ul style="font-size:13px;">
+          <li><strong>Consistent errors:</strong> always <code>{ error: { code, message } }</code>, with the right HTTP status (400/401/403/404/429).</li>
+          <li><strong>Pagination:</strong> <code>?limit=&amp;offset=</code> + a total count for v1 (note: switch to cursor-based for big datasets).</li>
+          <li><strong>Versioning:</strong> the <code>/v1</code> prefix. Additive changes stay in v1; anything breaking becomes <code>/v2</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>F · Launch an attack 🎯</h2>
+    <p class="lead">Click an attack and see which layer stops it.</p>
+    <div class="sim">
+      <button class="atk" onclick="atk(0,this)">🤖 A bot fires 10,000 submissions a second at the public endpoint</button>
+      <button class="atk" onclick="atk(1,this)">💉 Attacker submits <code>&lt;script&gt;steal()&lt;/script&gt;</code> as the feedback message</button>
+      <button class="atk" onclick="atk(2,this)">🏷️ Attacker adds <code>"tenant_id": "delta"</code> to the body but uses Alpha's key</button>
+      <button class="atk" onclick="atk(3,this)">🕵️ A malicious website's JavaScript tries to read an Alpha admin's feedback</button>
+      <button class="atk" onclick="atk(4,this)">🔢 Attacker guesses another tenant's feedback UUID and requests it</button>
+      <button class="atk" onclick="atk(5,this)">🪜 Casey (an Alpha <em>member</em>) tries to change tenant settings</button>
+      <div id="res" class="result" style="display:none;"><span class="verdict"></span><span class="why"></span></div>
+    </div>
+  </section>
+
+  <footer>
+    <strong>Next — Part 5 (the finale): the widget, the dashboard, the 30-second demo path, and the scaling story</strong> (bursty traffic + noisy neighbor). Then Stage 2a is done and I'll summarize everything for your sign-off before we lock specs in 2b.
+  </footer>
+
+</div>
+
+<script>
+  var A = [
+    ["🛑 Stopped by RATE LIMITING", "After N requests per public key and per IP, the endpoint returns 429 Too Many Requests. The flood can only ever touch the ingest connection pool — the dashboard stays fast. This is also our noisy-neighbor containment."],
+    ["🛑 Neutralized by OUTPUT ENCODING", "We store the text as-is, but when the dashboard renders it, it's escaped — so it appears as the literal characters “<script>steal()</script>”, not running code. The admin's browser never executes it."],
+    ["🛑 Ignored — tenant comes from the KEY", "The server never reads tenant_id from the body. It looks up the public key → Alpha, and the DB's WITH CHECK gate forces the row to be Alpha's. The injected “delta” is simply discarded."],
+    ["🛑 Blocked by AUTH + tight CORS", "The malicious site has no session cookie, so the Admin API returns 401. And even if a request went out, the browser won't let that site read the response (locked-down CORS). Two independent blocks."],
+    ["🛑 Blocked by RLS (the IDOR attack fails)", "Knowing the exact UUID doesn't matter. The attacker's session sets THEIR tenant; RLS makes the other tenant's row invisible, so they get a 404. The guard never hands over a folder of the wrong color."],
+    ["🛑 Blocked by the APP-LAYER ROLE CHECK", "Tenant isolation lets Casey see Alpha's feedback — but changing settings is admin-only. The app checks her membership role (member) and returns 403. Different lock from the tenant wall."]
+  ];
+  function atk(i, btn){
+    document.querySelectorAll('.atk').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    var r = document.getElementById('res');
+    r.style.display = 'block';
+    r.querySelector('.verdict').textContent = A[i][0];
+    r.querySelector('.why').textContent = A[i][1];
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint — Data Model · Part 2</title>
+<style>
+  :root{
+    --alpha:#2563eb; --delta:#d97706; --ink:#1f2937; --muted:#6b7280;
+    --line:#d1d5db; --bg:#f8fafc; --accent:#0f766e; --tid:#fde68a; --tidline:#d97706;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0 0 80px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+  header{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:32px 24px;}
+  header h1{margin:0 0 6px;font-size:26px;}
+  header p{margin:0;color:#cbd5e1;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;}
+  section{margin-top:40px;}
+  h2{font-size:20px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:8px;}
+  .lead{color:var(--muted);font-size:15px;margin:0 0 18px;}
+  .note{background:#ecfeff;border-left:4px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+  .warn{background:#fef2f2;border-left:4px solid #be123c;padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+
+  .tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;align-items:start;}
+  .tbl{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .tbl h3{margin:0;padding:11px 14px;font-size:15px;background:#0f172a;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;}
+  .badge.rls{background:#be123c;color:#fff;}
+  .badge.global{background:#f59e0b;color:#0f172a;}
+  .tbl ul{list-style:none;margin:0;padding:6px 0;}
+  .tbl li{display:flex;gap:8px;padding:5px 14px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;border-bottom:1px solid #f1f5f9;}
+  .tbl li:last-child{border-bottom:none;}
+  .col{flex:1;color:var(--ink);}
+  .typ{color:var(--muted);font-size:12px;}
+  .mark{width:18px;text-align:center;}
+  .tidrow{background:var(--tid);border-left:3px solid var(--tidline);}
+  .grp{padding:4px 14px;font-size:11px;color:var(--muted);font-style:italic;}
+
+  .relmap{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:10px;}
+  .hub{background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;font-weight:700;font-family:monospace;}
+  .fan{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:4px;}
+  .leaf{background:#fff;border:1px solid var(--tidline);border-top:4px solid var(--tidline);border-radius:8px;padding:8px 14px;font-family:monospace;font-size:13px;text-align:center;}
+  .leaf small{display:block;color:var(--muted);font-size:11px;}
+  .down{font-size:20px;color:var(--tidline);}
+
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,monospace;}
+  footer{margin-top:50px;padding-top:20px;border-top:2px solid var(--line);color:var(--muted);font-size:14px;}
+  .key-legend{font-size:13px;color:var(--muted);margin-top:10px;}
+  .key-legend code{margin-right:4px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PulsePoint — The Data Model</h1>
+    <p>Stage 2a architecture · Part 2 of ~5 · Five tables, and how tenant_id ties them together</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>A · The five tables</h2>
+    <p class="lead">🔒 = Row-Level Security on (filtered by tenant) · 🔑 = primary key · 🔗 = foreign key (points at another table) · <span style="background:var(--tid);padding:1px 5px;border-radius:4px;">highlighted = the tenant_id isolation column</span> · <code>?</code> = optional/nullable.</p>
+
+    <div class="tables">
+
+      <div class="tbl">
+        <h3>tenants <span class="badge rls">🔒 RLS</span></h3>
+        <ul>
+          <li><span class="mark">🔑</span><span class="col">id</span><span class="typ">uuid</span></li>
+          <li><span class="mark"></span><span class="col">name</span><span class="typ">text</span></li>
+          <li><span class="mark"></span><span class="col">slug</span><span class="typ">text · unique</span></li>
+          <li><span class="mark"></span><span class="col">public_key</span><span class="typ">text · unique</span></li>
+          <li><span class="mark"></span><span class="col">widget_config</span><span class="typ">jsonb</span></li>
+          <li><span class="mark"></span><span class="col">created_at / updated_at</span><span class="typ">timestamp</span></li>
+        </ul>
+      </div>
+
+      <div class="tbl">
+        <h3>users <span class="badge global">⚠ global</span></h3>
+        <ul>
+          <li><span class="mark">🔑</span><span class="col">id</span><span class="typ">uuid</span></li>
+          <li><span class="mark"></span><span class="col">email</span><span class="typ">text · unique</span></li>
+          <li><span class="mark"></span><span class="col">password_hash</span><span class="typ">text</span></li>
+          <li><span class="mark"></span><span class="col">created_at / updated_at</span><span class="typ">timestamp</span></li>
+        </ul>
+        <div class="grp">No tenant_id — a login identity, reached via memberships. Special handling (section C).</div>
+      </div>
+
+      <div class="tbl">
+        <h3>memberships <span class="badge rls">🔒 RLS</span></h3>
+        <ul>
+          <li><span class="mark">🔑</span><span class="col">id</span><span class="typ">uuid</span></li>
+          <li><span class="mark">🔗</span><span class="col">user_id</span><span class="typ">→ users</span></li>
+          <li class="tidrow"><span class="mark">🔗</span><span class="col">tenant_id</span><span class="typ">→ tenants</span></li>
+          <li><span class="mark"></span><span class="col">role</span><span class="typ">admin | member</span></li>
+          <li><span class="mark"></span><span class="col">unique(user_id, tenant_id)</span><span class="typ"></span></li>
+        </ul>
+        <div class="grp">The join table: "person X is role Y in company Z."</div>
+      </div>
+
+      <div class="tbl">
+        <h3>feedback <span class="badge rls">🔒 RLS</span></h3>
+        <ul>
+          <li><span class="mark">🔑</span><span class="col">id</span><span class="typ">uuid</span></li>
+          <li class="tidrow"><span class="mark">🔗</span><span class="col">tenant_id</span><span class="typ">→ tenants</span></li>
+          <li><span class="mark"></span><span class="col">type</span><span class="typ">bug|feature|rating|other</span></li>
+          <li><span class="mark"></span><span class="col">message</span><span class="typ">text?</span></li>
+          <li><span class="mark"></span><span class="col">rating</span><span class="typ">int? (1–5)</span></li>
+          <li><span class="mark"></span><span class="col">contact_email</span><span class="typ">text?</span></li>
+        </ul>
+        <div class="grp">submitter_external_id / _email? / _display_name?</div>
+        <div class="grp">context_page_url / _user_agent / _referrer?</div>
+        <ul>
+          <li><span class="mark"></span><span class="col">status</span><span class="typ">open→…→closed</span></li>
+          <li><span class="mark">🔗</span><span class="col">assignee_membership_id</span><span class="typ">→ memberships ?</span></li>
+          <li><span class="mark"></span><span class="col">created_at / updated_at</span><span class="typ">timestamp</span></li>
+        </ul>
+      </div>
+
+      <div class="tbl">
+        <h3>feedback_notes <span class="badge rls">🔒 RLS</span></h3>
+        <ul>
+          <li><span class="mark">🔑</span><span class="col">id</span><span class="typ">uuid</span></li>
+          <li class="tidrow"><span class="mark">🔗</span><span class="col">tenant_id</span><span class="typ">→ tenants (denormalized!)</span></li>
+          <li><span class="mark">🔗</span><span class="col">feedback_id</span><span class="typ">→ feedback</span></li>
+          <li><span class="mark">🔗</span><span class="col">author_membership_id</span><span class="typ">→ memberships</span></li>
+          <li><span class="mark"></span><span class="col">body</span><span class="typ">text</span></li>
+          <li><span class="mark"></span><span class="col">created_at</span><span class="typ">timestamp</span></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="key-legend">Indexes that matter (so the inbox is fast): <code>feedback(tenant_id, created_at DESC)</code> <code>feedback(tenant_id, status)</code> <code>feedback(tenant_id, type)</code> — every index leads with <code>tenant_id</code>, because every query is "within one tenant."</div>
+  </section>
+
+  <section>
+    <h2>B · Follow the tenant_id thread</h2>
+    <p class="lead">Every tenant-owned table carries a <code>tenant_id</code> that points back to one row in <code>tenants</code>. That single column is what RLS filters on — so isolation works the <em>same way</em> on every table.</p>
+    <div class="relmap">
+      <div class="hub">tenants.id</div>
+      <div class="down">↓ &nbsp; is referenced by &nbsp; ↓</div>
+      <div class="fan">
+        <div class="leaf">feedback.tenant_id<small>each submission</small></div>
+        <div class="leaf">memberships.tenant_id<small>each staff link</small></div>
+        <div class="leaf">feedback_notes.tenant_id<small>each note</small></div>
+      </div>
+    </div>
+    <div class="note">💡 <strong>Why give feedback_notes its own tenant_id</strong> when it could find the tenant through <code>feedback_id</code>? Because then RLS can filter notes <em>directly</em> — no join needed — and the rule is identical on every table: <code>tenant_id = me</code>. Storing a value you could technically derive, to keep things simple/fast, is called <strong>denormalization</strong>. Here it's a deliberate choice in service of the isolation guarantee.</div>
+  </section>
+
+  <section>
+    <h2>C · The one oddball — <code>users</code> is global</h2>
+    <p class="lead">Every other table is owned by exactly one tenant. <code>users</code> isn't — it's a login identity that could (in theory) belong to more than one company. So it gets <strong>special handling</strong> instead of a tenant_id.</p>
+    <div class="warn">
+      <strong>Why it can't just have RLS like the others:</strong> when you log in, we only have your email + password — we don't <em>know</em> your tenant yet. We have to find your <code>users</code> row <em>first</em>, then look up your <code>memberships</code> to learn which tenant you're in. So that one lookup can't be tenant-filtered.
+    </div>
+    <div class="note">
+      <strong>How we keep it safe anyway:</strong><br>
+      1. Only the <code>pulsepoint_app</code> role can read <code>users</code> at all (the public ingest role can't touch it).<br>
+      2. The only un-tenant-scoped query is "find user by email, to log in."<br>
+      3. The dashboard <strong>never lists <code>users</code> directly.</strong> "Your team" is a query over <code>memberships</code> (which <em>is</em> RLS'd) joined to <code>users</code> — so you only ever see people who belong to <em>your</em> tenant.
+    </div>
+  </section>
+
+  <section>
+    <h2>D · The stats panel — no new table needed</h2>
+    <p class="lead">Remember the dashboard stats strip we added? It needs <strong>zero new tables.</strong> It's just summary questions asked of the <code>feedback</code> table.</p>
+    <div class="note">
+      Queries like <code>COUNT(*) … GROUP BY status</code> or <code>AVG(rating)</code> run through the <em>same</em> RLS filter. So "12 open this week" automatically means "12 open <em>for your tenant</em> this week" — the isolation protects your totals exactly like it protects your row list. One less thing to get wrong.
+    </div>
+  </section>
+
+  <footer>
+    <strong>Next — Part 3: the RLS deep-dive.</strong> This is the crown jewel: the exact database roles, who <em>owns</em> the tables, the <code>USING</code> vs <code>WITH CHECK</code> rules, and the one-transaction-per-request trick that makes <code>SET LOCAL</code> safe. That's where "impossible to bypass" actually gets built.
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint — Test Guide (Codex contract tests)</title>
+<style>
+  :root{
+    --alpha:#2563eb; --delta:#d97706; --ink:#1f2937; --muted:#6b7280;
+    --line:#d1d5db; --bg:#f8fafc; --accent:#0f766e; --ok:#166534; --okbg:#dcfce7; --bad:#be123c;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0 0 80px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+  header{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:32px 24px;}
+  header h1{margin:0 0 6px;font-size:26px;}
+  header p{margin:0;color:#cbd5e1;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;}
+  section{margin-top:34px;}
+  h2{font-size:20px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:10px;}
+  .lead{color:var(--muted);font-size:15px;margin:0 0 16px;}
+  .note{background:#ecfeff;border-left:4px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:14px;margin:14px 0;}
+  .warn{background:#fef2f2;border-left:4px solid var(--bad);padding:12px 16px;border-radius:6px;font-size:14px;margin:14px 0;}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,monospace;}
+
+  .defs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;}
+  .def{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14px;}
+  .def b{color:var(--accent);}
+
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 0;position:sticky;top:0;background:var(--bg);padding:12px 0;z-index:5;}
+  .tabs button{border:1px solid var(--line);background:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink);}
+  .tabs button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .tabs button .ct{opacity:.6;font-weight:400;}
+
+  .file{display:none;}
+  .file.show{display:block;}
+  .filehead{font-family:ui-monospace,Menlo,monospace;font-size:15px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:8px 8px 0 0;margin-top:18px;}
+  .filehead .kind{float:right;font-size:11px;background:#334155;padding:2px 8px;border-radius:999px;}
+
+  .test{background:#fff;border:1px solid var(--line);border-top:none;padding:16px;}
+  .test:last-child{border-radius:0 0 8px 8px;}
+  .test h4{margin:0 0 4px;font-size:15px;}
+  .test .num{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:6px;}
+  .proves{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#fff;background:var(--alpha);border-radius:999px;padding:2px 9px;float:right;}
+  .proves.sec{background:var(--bad);}
+  .proves.fn{background:var(--accent);}
+  .gwt{margin:10px 0 0;border-left:3px solid var(--line);padding-left:12px;font-size:13px;}
+  .gwt div{margin:3px 0;}
+  .gwt .g{color:var(--muted);} .gwt .w{color:var(--ink);} .gwt .t{color:var(--ok);font-weight:600;}
+  .gwt .lbl{display:inline-block;width:54px;font-weight:700;font-size:11px;text-transform:uppercase;}
+  .verdict{margin-top:10px;background:var(--okbg);border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:13px;}
+  .verdict b{color:var(--ok);}
+  .crown{color:var(--delta);}
+  footer{margin-top:40px;padding-top:18px;border-top:2px solid var(--line);color:var(--muted);font-size:14px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PulsePoint — Test Guide</h1>
+    <p>The 17 contract tests Codex must pass · maps each test to the guarantee it proves</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>How to read this</h2>
+    <p class="lead">A test is just an automated sentence: "given a situation, when something happens, then this must be true." If reality disagrees, the test fails — loudly. Here's the vocabulary:</p>
+    <div class="defs">
+      <div class="def"><b>Unit test</b> — checks one small piece of logic in isolation (e.g. "does the validator reject a bad email?"). Fast, no database.</div>
+      <div class="def"><b>Integration test</b> — checks several pieces working together against a <b>real test Postgres</b>. The RLS guarantee can't be faked with mocks — it must hit a real database with the real roles + policies.</div>
+      <div class="def"><b>Given → When → Then</b> — the shape of each test below: the setup, the action, and what must be true after.</div>
+      <div class="def"><b>Tool</b> — <code>Vitest</code> runs them. HTTP tests use Fastify's <code>inject()</code> (no live server needed). DB tests connect to a throwaway test database.</div>
+    </div>
+    <div class="note">💡 <strong>These are the contract — a floor, not a ceiling.</strong> Codex must make all 17 pass. In <strong>Stage 4</strong>, Claude runs a <em>separate, adversarial security set that Codex never sees</em> — so passing these isn't enough; the behavior has to be genuinely correct.</div>
+  </section>
+
+  <div class="tabs">
+    <button class="active" onclick="show('iso',this)">⭐ isolation <span class="ct">(5)</span></button>
+    <button onclick="show('ing',this)">ingest <span class="ct">(5)</span></button>
+    <button onclick="show('auth',this)">auth <span class="ct">(3)</span></button>
+    <button onclick="show('adm',this)">adminFeedback <span class="ct">(4)</span></button>
+  </div>
+
+  <!-- ISOLATION -->
+  <div class="file show" id="iso">
+    <div class="filehead">isolation.test.ts <span class="kind">integration · real Postgres</span></div>
+    <div class="test"><span class="proves sec">RLS · read gate</span>
+      <h4><span class="num">1</span>Alpha sees only Alpha's feedback</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>both Alpha and Delta feedback rows exist in the shared table</div>
+        <div class="w"><span class="lbl">When</span>you query all feedback inside <code>withTenant(alphaId)</code></div>
+        <div class="t"><span class="lbl">Then</span>only Alpha rows come back — zero Delta rows</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the <code>USING</code> read gate — other tenants' rows are invisible.</div>
+    </div>
+    <div class="test"><span class="proves sec">RLS · write gate</span>
+      <h4><span class="num">2</span>Alpha can't plant a row tagged Delta</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>you're operating in Alpha's tenant context</div>
+        <div class="w"><span class="lbl">When</span>you try to <code>INSERT</code> feedback with <code>tenant_id = delta</code></div>
+        <div class="t"><span class="lbl">Then</span>the database rejects it (WITH CHECK violation)</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the <code>WITH CHECK</code> write gate — you can't write into another tenant.</div>
+    </div>
+    <div class="test"><span class="proves sec">fail closed</span>
+      <h4><span class="num">3</span>No tenant set → you see nothing</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span><code>app.current_tenant_id</code> is NOT set (simulating an app bug)</div>
+        <div class="w"><span class="lbl">When</span>you <code>SELECT</code> from feedback</div>
+        <div class="t"><span class="lbl">Then</span>you get <strong>zero</strong> rows — not all rows</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> fail-closed — a bug shows too little, never another tenant's data.</div>
+    </div>
+    <div class="test"><span class="proves sec">least privilege</span>
+      <h4><span class="num">4</span>The public role can't read feedback at all</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>you connect as the <code>pulsepoint_ingest</code> role</div>
+        <div class="w"><span class="lbl">When</span>you try to <code>SELECT</code> from feedback</div>
+        <div class="t"><span class="lbl">Then</span>it's denied (no SELECT grant exists for that role)</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the ingest path physically cannot read anyone's data, even if compromised.</div>
+    </div>
+    <div class="test"><span class="proves sec">IDOR defense</span>
+      <h4><span class="num">5</span>Guessing a Delta id as Alpha → 404</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>you're logged in as Alpha and somehow know a Delta feedback UUID</div>
+        <div class="w"><span class="lbl">When</span>you request <code>GET /feedback/:deltaId</code></div>
+        <div class="t"><span class="lbl">Then</span>you get <code>404</code> — the row is invisible to you</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the IDOR attack fails — knowing the id doesn't matter, RLS filters first.</div>
+    </div>
+  </div>
+
+  <!-- INGEST -->
+  <div class="file" id="ing">
+    <div class="filehead">ingest.test.ts <span class="kind">integration</span></div>
+    <div class="test"><span class="proves fn">happy path</span>
+      <h4><span class="num">1</span>A valid submission is stored under the right tenant</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>a valid payload + header <code>X-Tenant-Key: pk_alpha_demo</code></div>
+        <div class="w"><span class="lbl">When</span>you <code>POST /api/v1/public/feedback</code></div>
+        <div class="t"><span class="lbl">Then</span><code>201 { id }</code>, and the stored row's <code>tenant_id</code> = Alpha</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the key correctly routes the submission to its tenant.</div>
+    </div>
+    <div class="test"><span class="proves sec">no spoofing</span>
+      <h4><span class="num">2</span>A tenant_id in the body is ignored</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>a body containing <code>"tenant_id": "delta"</code> but Alpha's key</div>
+        <div class="w"><span class="lbl">When</span>you submit it</div>
+        <div class="t"><span class="lbl">Then</span>the row is stored as <strong>Alpha</strong> — the body value is discarded</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> tenant comes only from the key, never from client input.</div>
+    </div>
+    <div class="test"><span class="proves sec">auth</span>
+      <h4><span class="num">3</span>An unknown key is rejected</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>a garbage or revoked <code>X-Tenant-Key</code></div>
+        <div class="w"><span class="lbl">When</span>you submit feedback</div>
+        <div class="t"><span class="lbl">Then</span><code>401</code> — no tenant, no insert</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> only real keys can submit.</div>
+    </div>
+    <div class="test"><span class="proves fn">validation</span>
+      <h4><span class="num">4</span>Bad payloads are refused</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>a <code>rating</code> type with no 1–5 rating, OR an over-length message, OR an unknown type</div>
+        <div class="w"><span class="lbl">When</span>you submit</div>
+        <div class="t"><span class="lbl">Then</span><code>400</code> with the consistent error shape</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> only well-formed, sane data ever reaches the database.</div>
+    </div>
+    <div class="test"><span class="proves sec">abuse</span>
+      <h4><span class="num">5</span>Flooding triggers the rate limit</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>more requests than the per-key / per-IP limit allows</div>
+        <div class="w"><span class="lbl">When</span>the limit is exceeded</div>
+        <div class="t"><span class="lbl">Then</span><code>429 Too Many Requests</code></div>
+      </div>
+      <div class="verdict"><b>Proves:</b> abuse + noisy-neighbor containment works.</div>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <div class="file" id="auth">
+    <div class="filehead">auth.test.ts <span class="kind">integration</span></div>
+    <div class="test"><span class="proves sec">auth</span>
+      <h4><span class="num">1</span>Login works for good creds, fails for bad</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>a seeded user's email + password</div>
+        <div class="w"><span class="lbl">When</span>correct → / wrong password →</div>
+        <div class="t"><span class="lbl">Then</span><code>200</code> + a session cookie / <code>401</code></div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the front door opens only with the right key.</div>
+    </div>
+    <div class="test"><span class="proves sec">secrets</span>
+      <h4><span class="num">2</span>Passwords are stored hashed, never plaintext</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>a seeded user row</div>
+        <div class="w"><span class="lbl">When</span>you read <code>password_hash</code></div>
+        <div class="t"><span class="lbl">Then</span>it's a bcrypt hash — not the original password</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> a DB leak doesn't hand out everyone's passwords.</div>
+    </div>
+    <div class="test"><span class="proves sec">auth</span>
+      <h4><span class="num">3</span>No session → no admin access</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>no valid session cookie</div>
+        <div class="w"><span class="lbl">When</span>you call any admin endpoint</div>
+        <div class="t"><span class="lbl">Then</span><code>401</code></div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the admin API is closed to anonymous callers.</div>
+    </div>
+  </div>
+
+  <!-- ADMIN FEEDBACK -->
+  <div class="file" id="adm">
+    <div class="filehead">adminFeedback.test.ts <span class="kind">integration</span></div>
+    <div class="test"><span class="proves fn">list / filter</span>
+      <h4><span class="num">1</span>The inbox is tenant-scoped, paginated, filterable</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>logged in as Alpha admin</div>
+        <div class="w"><span class="lbl">When</span><code>GET /feedback</code> (with status/type filters)</div>
+        <div class="t"><span class="lbl">Then</span>only Alpha items, correct <code>total</code>, filters apply</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the dashboard list is isolated and behaves like a real paginated API.</div>
+    </div>
+    <div class="test"><span class="proves sec">isolation + write</span>
+      <h4><span class="num">2</span>You can update your own; you can't touch Delta's</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>logged in as Alpha admin</div>
+        <div class="w"><span class="lbl">When</span><code>PATCH</code> an Alpha item's status / <code>PATCH</code> a Delta id</div>
+        <div class="t"><span class="lbl">Then</span>Alpha update succeeds / Delta returns <code>404</code></div>
+      </div>
+      <div class="verdict"><b>Proves:</b> RLS protects writes through the API too, not just reads.</div>
+    </div>
+    <div class="test"><span class="proves sec">role check</span>
+      <h4><span class="num">3</span>Members can't reach settings; admins can</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>Casey (Alpha <em>member</em>) and the Alpha admin</div>
+        <div class="w"><span class="lbl">When</span>each calls <code>GET /settings</code></div>
+        <div class="t"><span class="lbl">Then</span>Casey → <code>403</code>; admin → <code>200</code></div>
+      </div>
+      <div class="verdict"><b>Proves:</b> the admin/member role wall (app-layer) works — separate from the tenant wall.</div>
+    </div>
+    <div class="test"><span class="proves fn">stats</span>
+      <h4><span class="num">4</span>Stats are tenant-scoped totals</h4>
+      <div class="gwt">
+        <div class="g"><span class="lbl">Given</span>the seeded Alpha feedback</div>
+        <div class="w"><span class="lbl">When</span><code>GET /stats</code> as Alpha</div>
+        <div class="t"><span class="lbl">Then</span>the counts equal Alpha's seeded numbers only</div>
+      </div>
+      <div class="verdict"><b>Proves:</b> "12 open this week" means <em>your</em> tenant — RLS protects aggregates too.</div>
+    </div>
+  </div>
+
+  <footer>
+    <strong>17 contract tests, mapped to guarantees.</strong> Codex must make every one green (no <code>.skip</code>, no weakened assertions) before Stage 3 is done. Then in Stage 4, Claude attacks the running app with an independent, unseen security set.
+  </footer>
+
+</div>
+
+<script>
+  function show(id, btn){
+    document.querySelectorAll('.file').forEach(function(f){f.classList.remove('show');});
+    document.getElementById(id).classList.add('show');
+    document.querySelectorAll('.tabs button').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    window.scrollTo({top: document.querySelector('.tabs').offsetTop - 10, behavior:'smooth'});
+  }
+</script>
+</body>
+</html>

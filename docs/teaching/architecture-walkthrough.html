@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint — Architecture Walkthrough · Part 1</title>
+<style>
+  :root {
+    --alpha: #2563eb;      /* Alpha = blue everywhere */
+    --alpha-bg: #eff6ff;
+    --delta: #d97706;      /* Delta = amber everywhere */
+    --delta-bg: #fffbeb;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #d1d5db;
+    --card: #ffffff;
+    --bg: #f8fafc;
+    --accent: #0f766e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 80px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #fff; padding: 32px 24px;
+  }
+  header h1 { margin: 0 0 6px; font-size: 26px; }
+  header p { margin: 0; color: #cbd5e1; font-size: 15px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  section { margin-top: 40px; }
+  h2 {
+    font-size: 20px; border-bottom: 2px solid var(--line);
+    padding-bottom: 8px; margin-bottom: 18px;
+  }
+  .lead { color: var(--muted); font-size: 15px; margin-top: -8px; }
+  .note {
+    background: #ecfeff; border-left: 4px solid var(--accent);
+    padding: 12px 16px; border-radius: 6px; font-size: 14px; margin: 16px 0;
+  }
+
+  /* ---- Cast cards ---- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .card h3 { margin: 0 0 4px; font-size: 16px; }
+  .card .tag { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .card p { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+  .pill { display:inline-block; padding:2px 8px; border-radius: 999px; font-size:12px; font-weight:600; }
+  .pill.yes { background:#dcfce7; color:#166534; }
+  .pill.no  { background:#fee2e2; color:#991b1b; }
+  .alpha-edge { border-top: 4px solid var(--alpha); }
+  .delta-edge { border-top: 4px solid var(--delta); }
+
+  /* ---- System map ---- */
+  .map { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; justify-content: center; }
+  .node {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px; width: 165px; text-align: center; font-size: 13px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .node strong { display:block; font-size: 14px; margin-bottom: 4px; }
+  .node .role { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: monospace; }
+  .arrow {
+    display:flex; flex-direction: column; align-items:center; justify-content:center;
+    width: 90px; font-size: 11px; color: var(--muted); text-align:center; padding: 0 2px;
+  }
+  .arrow .a { font-size: 22px; color: var(--accent); line-height: 1; }
+  .db {
+    background: #0f172a; color: #fff; border: none; position: relative;
+  }
+  .db .role { color: #94a3b8; }
+  .db .wall {
+    margin-top: 8px; font-size: 11px; background: #be123c; color:#fff;
+    border-radius: 6px; padding: 3px 6px; font-weight: 600;
+  }
+  .legend { font-size: 13px; color: var(--muted); margin-top: 14px; }
+  .legend span { font-family: monospace; color: var(--ink); }
+
+  /* ---- End to end flow ---- */
+  ol.flow { list-style: none; counter-reset: step; padding: 0; }
+  ol.flow li {
+    counter-increment: step; position: relative; padding: 12px 14px 12px 52px;
+    margin-bottom: 10px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; font-size: 14px;
+  }
+  ol.flow li::before {
+    content: counter(step); position: absolute; left: 14px; top: 12px;
+    width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size: 13px;
+  }
+  ol.flow li.write { border-left: 4px solid var(--alpha); }
+  ol.flow li.read  { border-left: 4px solid #7c3aed; }
+  ol.flow li.attack { border-left: 4px solid #be123c; background:#fef2f2; }
+  code { background:#f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .key { color: var(--muted); font-size: 13px; }
+
+  /* ---- RLS interactive table ---- */
+  .controls { display:flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .controls button {
+    border: 1px solid var(--line); background: #fff; padding: 8px 14px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink);
+  }
+  .controls button.active { background: var(--ink); color:#fff; border-color: var(--ink); }
+  table { width:100%; border-collapse: collapse; font-size: 13px; background:#fff; border-radius:10px; overflow:hidden; border:1px solid var(--line); }
+  th, td { padding: 9px 12px; text-align:left; border-bottom: 1px solid #eef2f7; }
+  th { background:#f1f5f9; font-size: 12px; text-transform: uppercase; letter-spacing:.03em; color: var(--muted); }
+  tr.alpha td:first-child { border-left: 4px solid var(--alpha); }
+  tr.delta td:first-child { border-left: 4px solid var(--delta); }
+  .ten { font-weight:700; font-size:12px; }
+  .ten.alpha { color: var(--alpha); }
+  .ten.delta { color: var(--delta); }
+  tr.hidden { opacity: .12; }
+  .caption { margin-top: 12px; font-size: 14px; padding: 10px 14px; border-radius:8px; background:#f1f5f9; }
+  footer { margin-top: 50px; padding-top: 20px; border-top: 2px solid var(--line); color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PulsePoint — How It All Fits Together</h1>
+    <p>Stage 2a architecture · Part 1 of ~5 · A teaching aid (not application code)</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>A · The cast — three kinds of people, two companies</h2>
+    <p class="lead">Colour code for the whole doc: <strong style="color:var(--alpha)">Alpha = blue</strong>, <strong style="color:var(--delta)">Delta = amber</strong>.</p>
+    <div class="cards">
+      <div class="card">
+        <span class="tag" style="color:var(--accent)">Logs in?</span>
+        <h3>Tenant staff</h3>
+        <p><span class="pill yes">Yes — email + password</span><br>
+        e.g. <code>admin@alpha.com</code> (admin), Casey (member), <code>admin@delta.com</code> (admin). Real accounts with a <strong>role</strong>. They use the <strong>dashboard</strong>.</p>
+      </div>
+      <div class="card">
+        <span class="tag" style="color:var(--accent)">Logs in?</span>
+        <h3>End-users (visitors)</h3>
+        <p><span class="pill no">No — never</span><br>
+        Alice (<code>alpha-1</code>), Bob (<code>delta-1</code>). Just a <strong>label</strong> on a feedback row. They use the <strong>widget</strong>, never see PulsePoint.</p>
+      </div>
+      <div class="card">
+        <span class="tag" style="color:var(--accent)">The companies</span>
+        <h3>Tenants</h3>
+        <p><strong style="color:var(--alpha)">Alpha</strong> &amp; <strong style="color:var(--delta)">Delta</strong>. Two separate customers sharing one app + one database. Kept apart by <strong>RLS</strong> (see section D).</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>B · The system map — two paths, one database</h2>
+    <p class="lead">Feedback flows in on the <strong style="color:var(--alpha)">write path</strong> (left→middle) and is triaged on the <strong style="color:#7c3aed">read path</strong> (middle←right).</p>
+    <div class="map">
+      <div class="node">
+        <strong>Widget</strong>
+        on demo-alpha.html
+        <div class="role">vanilla JS · Shadow DOM<br>carries pk_alpha_demo</div>
+      </div>
+      <div class="arrow">
+        <span class="a">→</span>
+        POST + X-Tenant-Key
+      </div>
+      <div class="node">
+        <strong>Public Ingest API</strong>
+        rate-limited · insert-only
+        <div class="role">role: pulsepoint_ingest</div>
+      </div>
+      <div class="arrow">
+        <span class="a">→</span>
+        INSERT
+      </div>
+      <div class="node db">
+        <strong>Postgres</strong>
+        shared tables<br>+ tenant_id column
+        <div class="role">owned by: pulsepoint_migrate</div>
+        <div class="wall">🔒 RLS filters every row by tenant</div>
+      </div>
+      <div class="arrow">
+        <span class="a">←</span>
+        SELECT (RLS-filtered)
+      </div>
+      <div class="node">
+        <strong>Admin API</strong>
+        feedback CRUD · stats
+        <div class="role">role: pulsepoint_app</div>
+      </div>
+      <div class="arrow">
+        <span class="a">←</span>
+        session cookie
+      </div>
+      <div class="node">
+        <strong>Dashboard</strong>
+        React/Vite SPA
+        <div class="role">staff log in here</div>
+      </div>
+    </div>
+    <p class="legend">Three database <span>roles</span>, each with the least power it needs:
+      <br>• <span>pulsepoint_migrate</span> — owns &amp; changes the tables (used only at setup, never by the running app)
+      <br>• <span>pulsepoint_ingest</span> — the public path; can <em>only insert</em> feedback
+      <br>• <span>pulsepoint_app</span> — the dashboard path; can read/update within one tenant
+    </p>
+    <div class="note">💡 The two paths use <strong>separate connection pools</strong>. A flood of spam on the public path can only exhaust the ingest pool — the dashboard keeps working. That's the cheap, real version of "separate the read and write paths."</div>
+  </section>
+
+  <section>
+    <h2>C · End-to-end — what happens when Alice clicks "Submit"</h2>
+    <p class="lead"><span style="color:var(--alpha)">■ write path</span> &nbsp; <span style="color:#7c3aed">■ read path</span> &nbsp; <span style="color:#be123c">■ attack that fails</span></p>
+    <ol class="flow">
+      <li class="write">Alice is on <code>demo-alpha.html</code>. The page loaded <code>embed.js</code> with <code>data-public-key="pk_alpha_demo"</code>.</li>
+      <li class="write">The widget asks the server for Alpha's config (accent colour, prompt text, which feedback types are on) and renders a small "Feedback" button inside its <strong>Shadow DOM</strong> bubble — styling can't leak in or out.</li>
+      <li class="write">Alice clicks it, picks <code>type: bug</code>, types a message, hits submit. The demo page also attaches a stub submitter <code>{ externalId: "alpha-1", displayName: "Alice" }</code>.</li>
+      <li class="write">The widget sends <code>POST /api/v1/public/feedback</code> with header <code>X-Tenant-Key: pk_alpha_demo</code>.</li>
+      <li class="write">Public API checks the <strong>rate limit</strong> (per key + per IP), <strong>validates</strong> the payload, then looks up the key → <span class="ten alpha">tenant = Alpha</span>. (Unknown key → rejected.)</li>
+      <li class="write">It opens a transaction, runs <code>SET LOCAL app.ingest_tenant_id = alpha</code>, and inserts the row. The database <em>itself</em> stamps <code>tenant_id = alpha</code> and refuses any other value. Returns <code>201</code> + the new id.</li>
+      <li class="read">Later, <code>admin@alpha.com</code> logs in → gets a secure <strong>session cookie</strong>. Opens the dashboard inbox.</li>
+      <li class="read">Admin API reads the session → finds the membership → <span class="ten alpha">tenant = Alpha</span>. Opens a transaction, runs <code>SET LOCAL app.current_tenant_id = alpha</code>, then <code>SELECT … FROM feedback</code>.</li>
+      <li class="read">RLS quietly appends "<em>…and only rows where tenant_id = alpha</em>". Alice's new row appears. None of Delta's rows do. Admin changes status, adds a note (also tenant-checked).</li>
+      <li class="attack">If <code>admin@delta.com</code> tries to open Alice's feedback by its exact id, their session sets <code>tenant_id = delta</code>, RLS returns <strong>zero rows</strong>, and they get a <code>404</code> — the leak is blocked <em>at the database</em>, even if the app code had a bug.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>D · RLS in action — one shared table, two filtered views</h2>
+    <p class="lead">All feedback lives in <strong>one table</strong>. RLS doesn't move rows anywhere — it just controls which ones each request can <em>see</em>. Click the buttons to "become" each viewer.</p>
+    <div class="controls">
+      <button data-mode="raw" class="active" onclick="setMode('raw', this)">🗄️ Raw database</button>
+      <button data-mode="alpha" onclick="setMode('alpha', this)">👤 As Alpha admin</button>
+      <button data-mode="delta" onclick="setMode('delta', this)">👤 As Delta admin</button>
+    </div>
+    <table id="rls">
+      <thead>
+        <tr><th>id</th><th>tenant_id</th><th>type</th><th>message</th><th>status</th></tr>
+      </thead>
+      <tbody>
+        <tr class="alpha"><td>#f01</td><td><span class="ten alpha">alpha</span></td><td>bug</td><td>Login button broken</td><td>open</td></tr>
+        <tr class="delta"><td>#f02</td><td><span class="ten delta">delta</span></td><td>feature</td><td>Add dark mode</td><td>open</td></tr>
+        <tr class="alpha"><td>#f03</td><td><span class="ten alpha">alpha</span></td><td>rating</td><td>★★★★☆</td><td>open</td></tr>
+        <tr class="delta"><td>#f04</td><td><span class="ten delta">delta</span></td><td>bug</td><td>Checkout 500 error</td><td>in_progress</td></tr>
+        <tr class="alpha"><td>#f05</td><td><span class="ten alpha">alpha</span></td><td>feature</td><td>CSV export</td><td>resolved</td></tr>
+      </tbody>
+    </table>
+    <div class="caption" id="cap"></div>
+  </section>
+
+  <footer>
+    <strong>Next up — Part 2: the data model.</strong> The exact tables (tenants, users, memberships, feedback, feedback_notes), how <code>tenant_id</code> threads through them, and which ones carry RLS. We'll go through it together before anything gets locked.
+  </footer>
+
+</div>
+
+<script>
+  var caps = {
+    raw:   "🗄️ This is the raw table as a superuser would see it — all 5 rows, both tenants mixed. Our running app NEVER connects this way. This is exactly the view RLS exists to prevent.",
+    alpha: "👤 Logged in as Alpha. RLS added “WHERE tenant_id = alpha”. You see 3 rows. Delta's rows still physically exist in the table — they're just invisible to you.",
+    delta: "👤 Logged in as Delta. RLS added “WHERE tenant_id = delta”. You see 2 rows. Alpha's rows are invisible. Neither tenant can reach the other, even with a crafted request."
+  };
+  function setMode(mode, btn) {
+    document.querySelectorAll('.controls button').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('#rls tbody tr').forEach(function(tr){
+      var show = (mode === 'raw') || tr.classList.contains(mode);
+      tr.classList.toggle('hidden', !show);
+    });
+    document.getElementById('cap').textContent = caps[mode];
+  }
+  setMode('raw', document.querySelector('.controls button'));
+</script>
+</body>
+</html>

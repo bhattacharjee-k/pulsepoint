@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint — RLS Deep Dive · Part 3</title>
+<style>
+  :root{
+    --alpha:#2563eb; --delta:#d97706; --ink:#1f2937; --muted:#6b7280;
+    --line:#d1d5db; --bg:#f8fafc; --accent:#0f766e; --ok:#166534; --bad:#be123c;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0 0 80px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+  header{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:32px 24px;}
+  header h1{margin:0 0 6px;font-size:26px;}
+  header p{margin:0;color:#cbd5e1;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;}
+  section{margin-top:40px;}
+  h2{font-size:20px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:8px;}
+  .lead{color:var(--muted);font-size:15px;margin:0 0 18px;}
+  .note{background:#ecfeff;border-left:4px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+  .warn{background:#fef2f2;border-left:4px solid var(--bad);padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .card h3{margin:0 0 8px;font-size:15px;font-family:ui-monospace,Menlo,monospace;}
+  .card ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--muted);}
+  .card.migrate{border-top:4px solid #7c3aed;}
+  .card.app{border-top:4px solid var(--alpha);}
+  .card.ingest{border-top:4px solid var(--delta);}
+  .can{color:var(--ok);font-weight:600;}
+  .cant{color:var(--bad);font-weight:600;}
+
+  pre{background:#0f172a;color:#e2e8f0;padding:16px;border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.5;}
+  pre .k{color:#93c5fd;} pre .c{color:#86efac;} pre .com{color:#64748b;font-style:italic;}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,monospace;}
+
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .gate{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;}
+  .gate h4{margin:0 0 6px;font-family:monospace;font-size:14px;}
+  .gate .who{font-size:12px;color:var(--muted);}
+  .using{border-top:4px solid #0ea5e9;}
+  .check{border-top:4px solid #ec4899;}
+
+  .layers{counter-reset:l;list-style:none;padding:0;}
+  .layers li{counter-increment:l;position:relative;padding:10px 14px 10px 46px;margin-bottom:8px;background:#fff;border:1px solid var(--line);border-radius:8px;font-size:14px;}
+  .layers li::before{content:counter(l);position:absolute;left:12px;top:10px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;}
+
+  /* simulator */
+  .sim{background:#fff;border:2px solid var(--ink);border-radius:12px;padding:20px;}
+  .sim label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;}
+  .sim select,.sim .chk{font-size:14px;padding:8px;border-radius:8px;border:1px solid var(--line);width:100%;}
+  .chkrow{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;}
+  .chkrow input{width:18px;height:18px;}
+  .result{margin-top:18px;padding:16px;border-radius:10px;font-size:15px;}
+  .result.ok{background:#dcfce7;border:1px solid #86efac;}
+  .result.bad{background:#fee2e2;border:1px solid #fca5a5;}
+  .result .verdict{font-weight:800;font-size:17px;display:block;margin-bottom:4px;}
+  .result.ok .verdict{color:var(--ok);}
+  .result.bad .verdict{color:var(--bad);}
+  .result .why{font-size:14px;color:var(--ink);}
+  footer{margin-top:50px;padding-top:20px;border-top:2px solid var(--line);color:var(--muted);font-size:14px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PulsePoint — How RLS Makes Leaks Impossible</h1>
+    <p>Stage 2a architecture · Part 3 of ~5 · The crown jewel — try to break it at the bottom</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>A · Three roles, each with the least power it needs</h2>
+    <p class="lead">A database <strong>role</strong> is a login with its own permissions. We use three, so no single connection is all-powerful. This is the principle of <strong>least privilege</strong>.</p>
+    <div class="cards">
+      <div class="card migrate">
+        <h3>pulsepoint_migrate</h3>
+        <ul>
+          <li class="can">OWNS the tables; creates/changes schema + RLS policies</li>
+          <li>Used only at setup/deploy</li>
+          <li class="cant">The running app NEVER connects as this</li>
+        </ul>
+      </div>
+      <div class="card app">
+        <h3>pulsepoint_app</h3>
+        <ul>
+          <li class="can">Read / insert / update — but only within one tenant</li>
+          <li>Powers the dashboard (read path)</li>
+          <li class="cant">Not an owner → fully subject to RLS</li>
+        </ul>
+      </div>
+      <div class="card ingest">
+        <h3>pulsepoint_ingest</h3>
+        <ul>
+          <li class="can">INSERT feedback only</li>
+          <li>Powers the public widget (write path)</li>
+          <li class="cant">No SELECT grant at all → literally cannot read anyone's data</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>B · The trap most people fall into</h2>
+    <div class="warn">
+      <strong>RLS does NOT apply to the table's owner, and never to a superuser.</strong> If the running app happened to <em>own</em> its tables, every policy would be silently skipped and "isolation" would be fake.
+    </div>
+    <p>We avoid it two ways, belt-and-suspenders:</p>
+    <ul>
+      <li><strong>Ownership:</strong> tables are owned by <code>pulsepoint_migrate</code> — a role the app never logs in as. The runtime roles (<code>app</code>, <code>ingest</code>) are non-owners, so RLS always applies to them.</li>
+      <li><strong>FORCE:</strong> we also add <code>ALTER TABLE … FORCE ROW LEVEL SECURITY</code>, which makes policies apply <em>even to the owner</em>. So even a future mistake can't bypass it.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>C · The policy has two halves: a read gate and a write gate</h2>
+    <p class="lead">Every RLS policy can have a <code>USING</code> clause and a <code>WITH CHECK</code> clause. You need <strong>both</strong> — one guards reading, the other guards writing.</p>
+    <div class="twocol">
+      <div class="gate using">
+        <h4>USING — the read gate</h4>
+        <div class="who">Controls which EXISTING rows you can SELECT, UPDATE, or DELETE.</div>
+        <p style="font-size:13px;">"You may only <em>see / touch</em> rows where <code>tenant_id = me</code>." Other tenants' rows are simply invisible — a query for them returns nothing.</p>
+      </div>
+      <div class="gate check">
+        <h4>WITH CHECK — the write gate</h4>
+        <div class="who">Controls which rows you're allowed to INSERT (or the new version on UPDATE).</div>
+        <p style="font-size:13px;">"Any row you write MUST have <code>tenant_id = me</code>." Without this, you could insert a row stamped with someone else's tenant. This is the half people forget.</p>
+      </div>
+    </div>
+
+    <p style="margin-top:18px;">Here's the actual policy for the dashboard role on <code>feedback</code>:</p>
+    <pre><span class="com">-- turn RLS on, and force it even for the owner</span>
+<span class="k">ALTER TABLE</span> feedback <span class="k">ENABLE ROW LEVEL SECURITY</span>;
+<span class="k">ALTER TABLE</span> feedback <span class="k">FORCE  ROW LEVEL SECURITY</span>;
+
+<span class="com">-- the dashboard role: can only see/write its own tenant's rows</span>
+<span class="k">CREATE POLICY</span> tenant_isolation <span class="k">ON</span> feedback
+  <span class="k">FOR</span> ALL <span class="k">TO</span> pulsepoint_app
+  <span class="k">USING</span>      (tenant_id = <span class="c">current_setting('app.current_tenant_id')</span>::uuid)
+  <span class="k">WITH CHECK</span> (tenant_id = <span class="c">current_setting('app.current_tenant_id')</span>::uuid);
+
+<span class="com">-- the public role: insert-only, locked to the key's tenant</span>
+<span class="k">CREATE POLICY</span> ingest_insert <span class="k">ON</span> feedback
+  <span class="k">FOR</span> INSERT <span class="k">TO</span> pulsepoint_ingest
+  <span class="k">WITH CHECK</span> (tenant_id = <span class="c">current_setting('app.ingest_tenant_id')</span>::uuid);</pre>
+    <div class="note">💡 <code>current_setting('app.current_tenant_id')</code> reads a per-request variable. The policy says "the row's tenant must equal whoever this request is." The database enforces it on <em>every</em> query automatically — the app can't forget.</div>
+  </section>
+
+  <section>
+    <h2>D · How the tenant gets set — safely — on every request</h2>
+    <p class="lead">Where does <code>app.current_tenant_id</code> come from? The app sets it at the start of each request, inside a transaction.</p>
+    <pre><span class="k">BEGIN</span>;                                              <span class="com">-- start a transaction</span>
+<span class="k">SET LOCAL</span> app.current_tenant_id = '…alpha-uuid…';   <span class="com">-- from the SESSION, never a URL param</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> feedback;                          <span class="com">-- RLS auto-filters to Alpha</span>
+<span class="k">COMMIT</span>;                                             <span class="com">-- SET LOCAL resets here</span></pre>
+    <div class="note">💡 <strong>Why <code>SET LOCAL</code> + a transaction?</strong> Apps reuse database connections (a "pool") for speed. <code>SET LOCAL</code> ties the tenant value to <em>this one transaction</em> — it auto-clears at <code>COMMIT</code>, so it can never leak into the next request that reuses the same connection. Plain <code>SET</code> would stick around and leak. This detail is the difference between safe and catastrophic.</div>
+    <div class="warn"><strong>Fail closed:</strong> if the app ever forgets to set the variable, <code>current_setting(...)</code> matches nothing, so you see <em>zero</em> rows — not everything. A bug makes the app show too little, never too much. Safe by default.</div>
+  </section>
+
+  <section>
+    <h2>E · The whole defense, stacked (defense in depth)</h2>
+    <p class="lead">No single trick — layers. An attacker has to beat all of them.</p>
+    <ol class="layers">
+      <li><strong>Unguessable ids</strong> — UUIDs, so other tenants' records can't be enumerated.</li>
+      <li><strong>Tenant from the session</strong> — never trusted from a URL or request body.</li>
+      <li><strong>USING gate</strong> — can't read another tenant's rows (they're invisible → 404).</li>
+      <li><strong>WITH CHECK gate</strong> — can't write a row tagged as another tenant.</li>
+      <li><strong>Role grants</strong> — the public role can't read <em>anything</em>; the app role isn't an owner.</li>
+      <li><strong>FORCE RLS</strong> — applies even to the owner, so future mistakes can't bypass it.</li>
+      <li><strong>Fail closed</strong> — forget the tenant, and you get nothing.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>F · Try to break it 🔓</h2>
+    <p class="lead">You're logged into the dashboard (the <code>pulsepoint_app</code> role). Pick who you are and what you attempt — see what the database does.</p>
+    <div class="sim">
+      <label for="who">You are logged in as:</label>
+      <select id="who" onchange="run()">
+        <option value="alpha">Alpha admin (app.current_tenant_id = alpha)</option>
+        <option value="delta">Delta admin (app.current_tenant_id = delta)</option>
+      </select>
+
+      <label for="act">You try to:</label>
+      <select id="act" onchange="run()">
+        <option value="read-self">Read your OWN tenant's feedback</option>
+        <option value="read-other">Read the OTHER tenant's feedback</option>
+        <option value="edit-other">Edit the OTHER tenant's feedback (by its exact UUID)</option>
+        <option value="insert-other">Insert a row tagged as the OTHER tenant</option>
+        <option value="insert-self">Insert a row tagged as your OWN tenant</option>
+      </select>
+
+      <div class="chkrow">
+        <input type="checkbox" id="forgot" onchange="run()" />
+        <label for="forgot" style="margin:0;font-weight:400;">Simulate an app bug: forgot to run <code>SET LOCAL</code> this request</label>
+      </div>
+
+      <div id="result" class="result ok"><span class="verdict"></span><span class="why"></span></div>
+    </div>
+  </section>
+
+  <footer>
+    <strong>Next — Part 4: the two APIs + auth + the threat model.</strong> The public vs admin surfaces, why we chose session cookies, CORS (and why it isn't a security control), rate limiting, and stored-XSS. Then Part 5: the widget, dashboard, demo path, and scaling.
+  </footer>
+
+</div>
+
+<script>
+  function run(){
+    var who = document.getElementById('who').value;
+    var act = document.getElementById('act').value;
+    var forgot = document.getElementById('forgot').checked;
+    var other = who === 'alpha' ? 'Delta' : 'Alpha';
+    var self  = who === 'alpha' ? 'Alpha' : 'Delta';
+    var box = document.getElementById('result');
+    var v = box.querySelector('.verdict');
+    var w = box.querySelector('.why');
+    var ok = false, verdict = '', why = '';
+
+    if (forgot){
+      ok = false;
+      verdict = '🛑 BLOCKED — you see/do nothing';
+      why = "app.current_tenant_id is unset, so current_setting(...) matches no row. The query returns zero rows / the write is rejected. This is FAIL CLOSED: a bug makes the app show too little, never another tenant's data.";
+    } else if (act === 'read-self'){
+      ok = true;
+      verdict = '✅ ALLOWED';
+      why = "The USING gate matches (tenant_id = " + self + "). You see your own tenant's feedback — exactly as intended.";
+    } else if (act === 'read-other'){
+      ok = false;
+      verdict = '🛑 BLOCKED by the USING gate';
+      why = other + "'s rows have tenant_id = " + other + ", which ≠ " + self + ". RLS makes them invisible — the query returns nothing, so the API responds 404. The rows still exist; you just can't see them.";
+    } else if (act === 'edit-other'){
+      ok = false;
+      verdict = '🛑 BLOCKED by the USING gate';
+      why = "You can't even SEE " + other + "'s row, so there's nothing to UPDATE. Knowing the exact UUID doesn't help — RLS filters first. (This is the classic IDOR attack, and it fails.)";
+    } else if (act === 'insert-other'){
+      ok = false;
+      verdict = '🛑 BLOCKED by the WITH CHECK gate';
+      why = "You tried to write a row tagged " + other + " while logged in as " + self + ". WITH CHECK requires tenant_id = " + self + ", so the INSERT is rejected outright.";
+    } else if (act === 'insert-self'){
+      ok = true;
+      verdict = '✅ ALLOWED';
+      why = "The new row is tagged " + self + ", which matches WITH CHECK (tenant_id = " + self + "). A normal, legitimate write.";
+    }
+
+    box.className = 'result ' + (ok ? 'ok' : 'bad');
+    v.textContent = verdict;
+    w.textContent = why;
+  }
+  run();
+</script>
+</body>
+</html>

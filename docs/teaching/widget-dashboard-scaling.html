@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint — Widget, Dashboard &amp; Scaling · Part 5</title>
+<style>
+  :root{
+    --alpha:#2563eb; --delta:#d97706; --ink:#1f2937; --muted:#6b7280;
+    --line:#d1d5db; --bg:#f8fafc; --accent:#0f766e; --ok:#166534;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0 0 80px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+  header{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:32px 24px;}
+  header h1{margin:0 0 6px;font-size:26px;}
+  header p{margin:0;color:#cbd5e1;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px;}
+  section{margin-top:40px;}
+  h2{font-size:20px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:8px;}
+  .lead{color:var(--muted);font-size:15px;margin:0 0 18px;}
+  .note{background:#ecfeff;border-left:4px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:14px;margin:16px 0;}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,monospace;}
+
+  /* fake browser w/ widget */
+  .toggle{display:flex;gap:8px;margin-bottom:12px;}
+  .toggle button{border:1px solid var(--line);background:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;}
+  .toggle button.active{color:#fff;}
+  .browser{border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.08);background:#fff;}
+  .bar{background:#e2e8f0;padding:9px 12px;display:flex;align-items:center;gap:8px;}
+  .dot{width:11px;height:11px;border-radius:50%;background:#cbd5e1;}
+  .url{flex:1;background:#fff;border-radius:6px;padding:4px 10px;font-size:12px;color:var(--muted);font-family:monospace;}
+  .page{position:relative;min-height:320px;padding:26px;background:#fff;overflow:hidden;}
+  .page h3{margin:0 0 6px;}
+  .page p.dim{color:#94a3b8;font-size:14px;max-width:480px;}
+  .skel{height:12px;background:#eef2f7;border-radius:6px;margin:10px 0;}
+  .skel.s1{width:80%;} .skel.s2{width:65%;} .skel.s3{width:72%;}
+
+  .launcher{position:absolute;right:22px;bottom:22px;border:none;color:#fff;border-radius:999px;padding:12px 18px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.2);font-size:14px;}
+  .panel{position:absolute;right:22px;bottom:22px;width:300px;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);overflow:hidden;display:none;}
+  .panel.show{display:block;}
+  .panel .ph{color:#fff;padding:14px 16px;font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+  .panel .ph button{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;}
+  .panel .pb{padding:14px 16px;}
+  .types{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px;}
+  .types span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;}
+  .types span.sel{color:#fff;border:none;}
+  .panel textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;resize:none;font-family:inherit;}
+  .panel .send{width:100%;margin-top:10px;border:none;color:#fff;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;}
+  .thanks{padding:30px 16px;text-align:center;display:none;}
+  .thanks.show{display:block;}
+  .shadow-tag{position:absolute;left:22px;bottom:22px;font-size:11px;color:#94a3b8;font-family:monospace;}
+
+  /* dashboard mock */
+  .dash{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;}
+  .dash .top{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+  .stats{display:flex;gap:10px;padding:12px 16px;flex-wrap:wrap;}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;}
+  .stat b{display:block;font-size:20px;color:var(--alpha);}
+  .chips{display:flex;gap:6px;padding:0 16px 10px;flex-wrap:wrap;}
+  .chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted);}
+  .chip.on{background:var(--alpha);color:#fff;border-color:var(--alpha);}
+  .row{display:flex;gap:12px;padding:11px 16px;border-top:1px solid #f1f5f9;font-size:13px;align-items:center;}
+  .badge{font-size:11px;border-radius:5px;padding:2px 7px;font-weight:600;}
+  .b-bug{background:#fee2e2;color:#991b1b;} .b-feature{background:#dbeafe;color:#1e40af;} .b-rating{background:#fef9c3;color:#854d0e;}
+  .st{margin-left:auto;font-size:11px;color:var(--muted);}
+
+  .story{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+  .step{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:13px;}
+  .step .n{display:inline-block;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;text-align:center;line-height:24px;font-weight:700;margin-bottom:6px;}
+
+  ol.demo{list-style:none;counter-reset:d;padding:0;}
+  ol.demo li{counter-increment:d;position:relative;padding:10px 14px 10px 46px;margin-bottom:8px;background:#fff;border:1px solid var(--line);border-radius:8px;font-size:14px;}
+  ol.demo li::before{content:counter(d);position:absolute;left:12px;top:10px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;}
+
+  .scaletoggle{display:flex;gap:8px;margin-bottom:12px;}
+  .scaletoggle button{border:1px solid var(--line);background:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;}
+  .scaletoggle button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .scalebox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;font-size:14px;}
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:10px 0;font-size:13px;font-family:monospace;}
+  .flow .b{background:#0f172a;color:#fff;padding:6px 10px;border-radius:6px;}
+  .flow .q{background:var(--delta);color:#fff;padding:6px 10px;border-radius:6px;}
+  footer{margin-top:50px;padding-top:20px;border-top:2px solid var(--line);color:var(--muted);font-size:14px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>PulsePoint — The Experience &amp; The Scale</h1>
+    <p>Stage 2a architecture · Part 5 of 5 (finale) · Widget · Dashboard · Demo path · Scaling</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>A · The widget — try it (toggle the tenant!)</h2>
+    <p class="lead">This is a <em>mock</em> of the embeddable widget. Switch between Alpha and Delta to see <strong>per-tenant config</strong> — different accent colour, prompt text, and enabled feedback types — all driven by <code>widget_config</code>. Click the launcher to open it.</p>
+    <div class="toggle">
+      <button id="tAlpha" class="active" style="border-color:var(--alpha);background:var(--alpha);color:#fff;" onclick="setTenant('alpha')">🔵 View Alpha's site</button>
+      <button id="tDelta" onclick="setTenant('delta')">🟠 View Delta's site</button>
+    </div>
+    <div class="browser">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url" id="url">https://alpha.com</span></div>
+      <div class="page">
+        <h3 id="siteName">Welcome to Alpha</h3>
+        <p class="dim">This is the tenant's own website. Our widget loads here from a one-line script tag — the visitor barely notices it until they want to say something.</p>
+        <div class="skel s1"></div><div class="skel s2"></div><div class="skel s3"></div>
+
+        <span class="shadow-tag">↙ rendered inside a Shadow DOM bubble</span>
+
+        <button class="launcher" id="launcher" onclick="openPanel()">💬 Feedback</button>
+
+        <div class="panel" id="panel">
+          <div class="ph" id="ph"><span id="promptText">Help us improve</span><button onclick="closePanel()">×</button></div>
+          <div class="pb" id="pb">
+            <div class="types" id="types"></div>
+            <textarea rows="3" placeholder="Tell us what's on your mind…"></textarea>
+            <button class="send" id="send" onclick="submitMock()">Send feedback</button>
+          </div>
+          <div class="thanks" id="thanks">✅<br><strong>Thanks!</strong><br><span style="color:var(--muted);font-size:13px;">Your feedback reached the right tenant.</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="note">💡 The widget is <strong>vanilla JavaScript</strong> (no big framework → tiny + fast) and lives in a <strong>Shadow DOM</strong> bubble so the host page's CSS can't break it and its CSS can't leak out. On load it reads the public key from its <code>&lt;script&gt;</code> tag, fetches that tenant's config, and themes itself. States it handles: idle → open → submitting → thanks → error.</div>
+  </section>
+
+  <section>
+    <h2>B · The dashboard — the staff inbox</h2>
+    <p class="lead">Where Dana triages. A scannable list, filters, search, a stats strip, and a detail view. (Static mock below.)</p>
+    <div class="dash">
+      <div class="top"><strong>Alpha — Feedback</strong><span style="font-size:13px;color:var(--muted);">Dana (admin) · ⌨ j/k to move, enter to open</span></div>
+      <div class="stats">
+        <div class="stat"><b>12</b>open</div>
+        <div class="stat"><b style="color:#854d0e;">4</b>in progress</div>
+        <div class="stat"><b style="color:var(--ok);">31</b>resolved</div>
+        <div class="stat"><b style="color:var(--delta);">4.2★</b>avg rating</div>
+      </div>
+      <div class="chips"><span class="chip on">All</span><span class="chip">Bug</span><span class="chip">Feature</span><span class="chip">Rating</span><span class="chip">🔍 search…</span></div>
+      <div class="row"><span class="badge b-bug">bug</span> Login button does nothing on Safari <span class="st">Alice · 2m ago · open</span></div>
+      <div class="row"><span class="badge b-feature">feature</span> Please add CSV export to reports <span class="st">anon · 1h ago · open</span></div>
+      <div class="row"><span class="badge b-rating">rating</span> ★★★★☆ "Love it, bit slow" <span class="st">anon · 3h ago · resolved</span></div>
+    </div>
+    <div class="note">💡 Three states we build on purpose: <strong>empty</strong> ("No feedback yet — here's your install snippet" → doubles as onboarding), <strong>loading</strong> (skeleton rows), <strong>error</strong> ("Couldn't load — retry"). And it's <strong>role-aware</strong>: Casey (member) sees this inbox, but the Settings/Team buttons are hidden for her.</div>
+  </section>
+
+  <section>
+    <h2>C · Onboarding — "I just signed up" → "feedback is appearing"</h2>
+    <p class="lead">The path where multi-tenancy, the public key, and the widget all meet. (Signup itself is seeded/stubbed for v1, but the story is real.)</p>
+    <div class="story">
+      <div class="step"><span class="n">1</span><br>Sign up → you get a workspace + a <strong>public key</strong> <code>pk_…</code></div>
+      <div class="step"><span class="n">2</span><br>Dashboard shows a <strong>one-line snippet</strong> to paste on your site</div>
+      <div class="step"><span class="n">3</span><br>Paste it → the <strong>widget appears</strong>, themed to your config</div>
+      <div class="step"><span class="n">4</span><br>A visitor submits → it <strong>lands in your inbox</strong> seconds later</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>D · The 30-second demo (what a reviewer does)</h2>
+    <ol class="demo">
+      <li><code>docker compose up</code> — boots the app + Postgres + runs the seed (2 tenants, 3 users, sample feedback).</li>
+      <li>Open <code>demo-alpha.html</code> → blue widget → submit a bug.</li>
+      <li>Open <code>demo-delta.html</code> → amber widget → submit a feature.</li>
+      <li>Log in as <code>admin@alpha.com</code> → see <em>only</em> Alpha's feedback, including the one you just sent; stats tick up.</li>
+      <li>Log in as <code>admin@delta.com</code> → see <em>only</em> Delta's. The wall is visible in 5 seconds.</li>
+      <li>(Bonus) log in as Casey (member) → can triage, but Settings is gone.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>E · What happens at scale (bursty traffic + noisy neighbor)</h2>
+    <p class="lead">The challenge asks: a tenant goes viral (or a bot finds the endpoint) — thousands of submissions a second. How do you keep ingestion from taking down the dashboard?</p>
+    <div class="scaletoggle">
+      <button id="sV1" class="active" onclick="setScale('v1')">What we build for v1</button>
+      <button id="sScale" onclick="setScale('scale')">What we'd do at 100×</button>
+    </div>
+    <div class="scalebox" id="scalebox"></div>
+    <div class="note">💡 Two things are <strong>real even in v1</strong>, not just talk: (1) the ingest and dashboard paths use <strong>separate connection pools</strong>, so a write flood can't starve reads; (2) <strong>rate limits per key + per IP</strong> contain a noisy neighbor. The queue and read-replicas are the honestly-labeled "with more time" upgrades.</div>
+  </section>
+
+  <footer>
+    <strong>🎉 That's all of Stage 2a.</strong> Next message: I'll give you a plain-language <strong>summary of the whole architecture</strong> for your sign-off. When you approve, we move to Stage 2b — locking the technical spec + the Codex task list (still no code from Codex until you're ready).
+  </footer>
+
+</div>
+
+<script>
+  var cfg = {
+    alpha: { color:'#2563eb', site:'Welcome to Alpha', url:'https://alpha.com',
+             prompt:'Help us improve Alpha', types:['bug','feature','rating'] },
+    delta: { color:'#d97706', site:'Delta — Ship faster', url:'https://delta.com',
+             prompt:"Got feedback? We're listening", types:['bug','feature','other'] }
+  };
+  var cur = 'alpha';
+  function setTenant(t){
+    cur = t; var c = cfg[t];
+    document.getElementById('tAlpha').className = t==='alpha'?'active':'';
+    document.getElementById('tDelta').className = t==='delta'?'active':'';
+    document.getElementById('tAlpha').style.cssText = t==='alpha'?'border-color:var(--alpha);background:var(--alpha);color:#fff;':'';
+    document.getElementById('tDelta').style.cssText = t==='delta'?'border-color:var(--delta);background:var(--delta);color:#fff;':'';
+    document.getElementById('url').textContent = c.url;
+    document.getElementById('siteName').textContent = c.site;
+    document.getElementById('launcher').style.background = c.color;
+    document.getElementById('ph').style.background = c.color;
+    document.getElementById('send').style.background = c.color;
+    document.getElementById('promptText').textContent = c.prompt;
+    var ty = document.getElementById('types'); ty.innerHTML='';
+    c.types.forEach(function(tp,i){
+      var s=document.createElement('span'); s.textContent=tp;
+      if(i===0){ s.className='sel'; s.style.background=c.color; }
+      s.onclick=function(){ ty.querySelectorAll('span').forEach(function(x){x.className='';x.style.background='';}); s.className='sel'; s.style.background=c.color; };
+      ty.appendChild(s);
+    });
+    closePanel();
+  }
+  function openPanel(){ document.getElementById('panel').classList.add('show'); document.getElementById('launcher').style.display='none';
+    document.getElementById('pb').style.display='block'; document.getElementById('thanks').classList.remove('show'); }
+  function closePanel(){ document.getElementById('panel').classList.remove('show'); document.getElementById('launcher').style.display='block'; }
+  function submitMock(){ document.getElementById('pb').style.display='none'; document.getElementById('thanks').classList.add('show');
+    setTimeout(closePanel, 1800); }
+
+  var scale = {
+    v1: "<strong>v1 (what Codex builds):</strong><div class='flow'><span class='b'>widget</span> → <span class='b'>ingest API</span> → <span class='b'>INSERT</span> → <span class='b'>Postgres</span></div>Synchronous insert, returns <code>201</code>. Protected by rate limits + separate connection pool. Simple, correct, and fine for demo-scale traffic. We <em>describe</em> the queue rather than build it — and say so honestly.",
+    scale: "<strong>At 100× (the 'with more time' story):</strong><div class='flow'><span class='b'>widget</span> → <span class='b'>ingest API</span> → <span class='q'>QUEUE</span> → <span class='b'>worker</span> → <span class='b'>Postgres</span></div>Accept fast, return <code>202</code>, push to a <strong>queue</strong>; workers drain it at a steady rate (<strong>backpressure</strong> — a spike fills the queue, it doesn't crush the DB). Add <strong>read replicas</strong> so the dashboard reads never compete with ingest writes, per-tenant <strong>quotas</strong> to cap a noisy neighbor, and move a giant tenant to its own DB if needed. First thing to break at 100×: write throughput on the single Postgres — the queue + batched inserts fix it."
+  };
+  function setScale(s){
+    document.getElementById('sV1').className = s==='v1'?'active':'';
+    document.getElementById('sScale').className = s==='scale'?'active':'';
+    document.getElementById('scalebox').innerHTML = scale[s];
+  }
+
+  setTenant('alpha'); setScale('v1');
+</script>
+</body>
+</html>
