@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: pulsepoint
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pulsepoint"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "npm install && npm run db:migrate && npm run db:seed && npm --workspace apps/api run dev"
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_SUPER_URL: postgres://postgres:postgres@postgres:5432/pulsepoint
+      DATABASE_MIGRATE_URL: postgres://pulsepoint_migrate:pulsepoint_migrate@postgres:5432/pulsepoint
+      DATABASE_APP_URL: postgres://pulsepoint_app:pulsepoint_app@postgres:5432/pulsepoint
+      DATABASE_INGEST_URL: postgres://pulsepoint_ingest:pulsepoint_ingest@postgres:5432/pulsepoint
+      SESSION_SECRET: local-dev-session-secret-32-chars
+      ADMIN_CORS_ORIGIN: http://localhost:5173
+      API_PORT: 3000
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "npm install && npm --workspace apps/web run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: http://localhost:3000/api/v1
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  api_node_modules:
+  web_node_modules:

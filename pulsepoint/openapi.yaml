@@ -1,0 +1,164 @@
+openapi: 3.0.3
+info:
+  title: PulsePoint API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000/api/v1
+paths:
+  /public/widget-config:
+    get:
+      parameters:
+        - in: query
+          name: key
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Widget config }
+        '404': { description: Unknown key }
+  /public/feedback:
+    post:
+      parameters:
+        - in: header
+          name: X-Tenant-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngestPayload' }
+      responses:
+        '201': { description: Created }
+        '400': { description: Invalid payload }
+        '401': { description: Bad key }
+        '429': { description: Rate limited }
+  /auth/login:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: Session created }
+        '401': { description: Bad credentials }
+  /auth/logout:
+    post:
+      responses:
+        '200': { description: Session cleared }
+  /feedback:
+    get:
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, in_progress, resolved, closed] }
+        - in: query
+          name: type
+          schema: { type: string, enum: [bug, feature, rating, other] }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25, maximum: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: Tenant feedback list }
+        '401': { description: Login required }
+  /feedback/{id}:
+    get:
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: Feedback detail with notes }
+        '404': { description: Not found in tenant }
+    patch:
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [open, in_progress, resolved, closed] }
+                assigneeMembershipId: { type: string, format: uuid, nullable: true }
+      responses:
+        '200': { description: Updated }
+        '404': { description: Not found in tenant }
+  /feedback/{id}/notes:
+    post:
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+      responses:
+        '201': { description: Note created }
+  /stats:
+    get:
+      responses:
+        '200': { description: Tenant counts by status/type and average rating }
+  /team:
+    get:
+      responses:
+        '200': { description: Tenant memberships joined to users }
+        '403': { description: Admin role required }
+  /settings:
+    get:
+      responses:
+        '200': { description: Widget settings }
+        '403': { description: Admin role required }
+    patch:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accentColor: { type: string }
+                promptText: { type: string }
+                enabledTypes:
+                  type: array
+                  items: { type: string, enum: [bug, feature, rating, other] }
+      responses:
+        '200': { description: Updated widget settings }
+components:
+  parameters:
+    Id:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    IngestPayload:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [bug, feature, rating, other] }
+        message: { type: string, maxLength: 5000 }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        contactEmail: { type: string, format: email }
+        captchaToken: { type: string }
+        submitter:
+          type: object
+          properties:
+            externalId: { type: string }
+            email: { type: string, format: email }
+            displayName: { type: string }
+        context:
+          type: object
+          properties:
+            pageUrl: { type: string }
+            userAgent: { type: string }
+            referrer: { type: string }
