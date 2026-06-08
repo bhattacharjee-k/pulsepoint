@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PulsePoint at Scale — Multi-Tenancy &amp; Scalability Design</title>
+<style>
+  :root {
+    --alpha: #2563eb;
+    --alpha-bg: #eff6ff;
+    --delta: #d97706;
+    --delta-bg: #fffbeb;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #d1d5db;
+    --card: #ffffff;
+    --bg: #f8fafc;
+    --accent: #0f766e;
+    --danger: #be123c;
+    --danger-bg: #fef2f2;
+    --good: #166534;
+    --good-bg: #dcfce7;
+    --whale: #7c3aed;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; padding: 0 0 80px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    background: linear-gradient(135deg, #0f172a, #1e293b 60%, #312e81);
+    color: #fff; padding: 40px 22px 34px;
+    position: relative; overflow: hidden;
+  }
+  header .pulse {
+    position:absolute; right:-40px; top:-40px; width:180px; height:180px;
+    border-radius:50%; background: radial-gradient(circle, rgba(124,58,237,.5), transparent 70%);
+    animation: breathe 4s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100%{ transform:scale(1); opacity:.7 } 50%{ transform:scale(1.25); opacity:1 } }
+  header h1 { margin: 0 0 8px; font-size: 25px; line-height:1.25; position:relative; }
+  header p.sub { margin: 0; color: #c7d2fe; font-size: 15px; position:relative; }
+  header .tagrow { margin-top:16px; display:flex; flex-wrap:wrap; gap:8px; position:relative; }
+  header .tagrow span {
+    font-size:12px; font-weight:600; background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.18); padding:4px 10px; border-radius:999px; color:#e0e7ff;
+  }
+
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 18px; }
+
+  /* ---------- Sticky progress nav ---------- */
+  nav.toc {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(248,250,252,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line); overflow-x: auto; white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  nav.toc .inner { display:inline-flex; gap:4px; padding: 8px 14px; }
+  nav.toc a {
+    font-size:12px; font-weight:600; color: var(--muted); text-decoration:none;
+    padding:5px 10px; border-radius:999px; border:1px solid transparent;
+  }
+  nav.toc a:hover { color: var(--ink); background:#fff; border-color: var(--line); }
+
+  section { margin-top: 44px; scroll-margin-top: 56px; }
+  h2 {
+    font-size: 21px; margin-bottom: 6px; display:flex; align-items:center; gap:10px;
+  }
+  h2 .num {
+    flex:none; width:30px; height:30px; border-radius:8px; background:var(--ink); color:#fff;
+    display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;
+  }
+  h3 { font-size:16px; margin: 22px 0 8px; }
+  .lead { color: var(--muted); font-size: 15px; margin: 0 0 16px; border-bottom:2px solid var(--line); padding-bottom:14px; }
+  p { font-size: 15px; }
+  code { background:#eef2f7; padding: 1px 6px; border-radius: 5px; font-size: 13.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .note {
+    background: #ecfeff; border-left: 4px solid var(--accent);
+    padding: 12px 16px; border-radius: 8px; font-size: 14px; margin: 16px 0;
+  }
+  .yours {
+    background: #f5f3ff; border-left: 4px solid var(--whale);
+    padding: 12px 16px; border-radius: 8px; font-size: 14px; margin: 16px 0;
+  }
+  .yours b { color: var(--whale); }
+  .warn {
+    background: var(--danger-bg); border-left: 4px solid var(--danger);
+    padding: 12px 16px; border-radius: 8px; font-size: 14px; margin: 16px 0;
+  }
+
+  /* ---------- Reveal on scroll ---------- */
+  .reveal { opacity:0; transform: translateY(16px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity:1; transform:none; }
+
+  /* ---------- Generic card grid ---------- */
+  .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:14px; margin:14px 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .card h4 { margin:0 0 6px; font-size:15px; }
+  .card p { margin:0; font-size:13.5px; color:var(--muted); }
+
+  .demo { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin:18px 0; }
+  .demo .bar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  button.btn {
+    border:1px solid var(--line); background:#fff; padding:9px 16px; border-radius:9px;
+    cursor:pointer; font-size:13.5px; font-weight:600; color:var(--ink); transition: all .15s;
+  }
+  button.btn:hover { border-color:var(--ink); }
+  button.btn.active, button.btn.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  button.btn.danger { background:var(--danger); color:#fff; border-color:var(--danger); }
+  button.btn.good { background:var(--good); color:#fff; border-color:var(--good); }
+  .demo-caption { font-size:13.5px; color:var(--muted); margin-top:12px; padding:10px 14px; background:#f1f5f9; border-radius:8px; min-height:42px; }
+
+  /* ---------- Arithmetic counters ---------- */
+  .mathgrid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:14px; }
+  .stat { background:#0f172a; color:#fff; border-radius:12px; padding:16px; text-align:center; }
+  .stat .big { font-size:26px; font-weight:800; font-variant-numeric: tabular-nums; color:#a5b4fc; }
+  .stat .lbl { font-size:12px; color:#94a3b8; margin-top:4px; text-transform:uppercase; letter-spacing:.04em; }
+  .stat.warn-stat .big { color:#fca5a5; }
+
+  /* ---------- Whale / power law bars ---------- */
+  .powerlaw { display:flex; align-items:flex-end; gap:3px; height:140px; padding:10px 4px; background:#0f172a; border-radius:12px; overflow:hidden; }
+  .powerlaw .pl-bar { flex:1; background:linear-gradient(to top,#475569,#94a3b8); border-radius:3px 3px 0 0; min-width:2px; transition: height 1s cubic-bezier(.2,.8,.2,1); height:2%; }
+  .powerlaw .pl-bar.whale { background:linear-gradient(to top,#7c3aed,#a78bfa); }
+  .pl-legend { display:flex; gap:16px; font-size:12.5px; color:var(--muted); margin-top:10px; flex-wrap:wrap; }
+  .pl-legend b { color:var(--whale); }
+
+  /* ---------- Shard grid ---------- */
+  .shards { display:grid; grid-template-columns: repeat(4,1fr); gap:10px; margin:14px 0; }
+  .shard {
+    border:1px solid var(--line); border-radius:10px; padding:10px 8px; text-align:center;
+    background:#fff; font-size:12px; transition: all .5s; position:relative; min-height:78px;
+    display:flex; flex-direction:column; justify-content:center; gap:4px;
+  }
+  .shard .sname { font-weight:700; font-size:12px; }
+  .shard .load { height:6px; border-radius:3px; background:#e2e8f0; overflow:hidden; }
+  .shard .load i { display:block; height:100%; background:var(--accent); width:20%; transition: width .8s; }
+  .shard.hot { background:var(--danger-bg); border-color:var(--danger); animation: shake .4s ease-in-out 3; }
+  .shard.hot .load i { background:var(--danger); }
+  .shard.dedicated { background:#f5f3ff; border-color:var(--whale); }
+  .shard.dedicated .load i { background:var(--whale); }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)} }
+  .shard .melt { font-size:18px; }
+
+  /* ---------- Tier ladder ---------- */
+  .ladder { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .rung { border-radius:12px; padding:14px; border:1px solid var(--line); background:#fff; position:relative; }
+  .rung.pooled { border-top:4px solid #64748b; }
+  .rung.cell { border-top:4px solid var(--alpha); }
+  .rung.dedicated { border-top:4px solid var(--whale); }
+  .rung h4 { margin:0 0 6px; font-size:15px; }
+  .rung ul { margin:8px 0 0; padding-left:18px; font-size:12.5px; color:var(--muted); }
+  .rung .blast { margin-top:10px; font-size:11.5px; font-weight:600; padding:3px 8px; border-radius:6px; display:inline-block; }
+  .blast.hi { background:var(--danger-bg); color:var(--danger); }
+  .blast.mid { background:var(--delta-bg); color:var(--delta); }
+  .blast.lo { background:var(--good-bg); color:var(--good); }
+
+  /* ---------- Rate limiter demo ---------- */
+  .laneset { display:grid; gap:10px; }
+  .lane { display:flex; align-items:center; gap:10px; }
+  .lane .who { width:96px; font-size:12.5px; font-weight:700; flex:none; }
+  .lane .track { flex:1; height:24px; background:#eef2f7; border-radius:999px; overflow:hidden; position:relative; }
+  .lane .served { height:100%; border-radius:999px; width:0%; transition: width .25s linear; }
+  .lane.good .served { background:var(--good); }
+  .lane.abuser .served { background:var(--delta); }
+  .lane .rej { position:absolute; right:8px; top:0; height:24px; display:flex; align-items:center; font-size:11px; font-weight:700; color:var(--danger); }
+  .lane .lat { width:74px; font-size:12px; flex:none; text-align:right; font-variant-numeric:tabular-nums; }
+
+  /* ---------- Idempotency counter ---------- */
+  .idem { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  .idem .pktrack { flex:1; min-width:200px; height:54px; background:#0f172a; border-radius:10px; position:relative; overflow:hidden; }
+  .packet { position:absolute; top:14px; left:-30px; width:26px; height:26px; border-radius:6px; background:var(--alpha); display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; font-weight:700; }
+  .counterbox { text-align:center; }
+  .counterbox .cnum { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .counterbox.exact .cnum { color:var(--good); }
+  .counterbox.wrong .cnum { color:var(--danger); }
+  .counterbox .clbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+
+  /* ---------- Rollup race ---------- */
+  .race { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .racer { border:1px solid var(--line); border-radius:12px; padding:14px; background:#fff; }
+  .racer h4 { margin:0 0 4px; font-size:14px; }
+  .racer .meter { height:14px; background:#eef2f7; border-radius:999px; overflow:hidden; margin:10px 0; }
+  .racer .meter i { display:block; height:100%; width:0%; border-radius:999px; transition: width linear; }
+  .racer.raw .meter i { background:var(--danger); }
+  .racer.rollup .meter i { background:var(--good); }
+  .racer .ms { font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .racer .rows { font-size:12px; color:var(--muted); }
+
+  /* ---------- Migration timeline ---------- */
+  .timeline { position:relative; padding-left:8px; }
+  .tstep { display:flex; gap:14px; padding:6px 0; }
+  .tstep .dot { flex:none; width:30px; height:30px; border-radius:50%; background:#e2e8f0; color:var(--muted); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; border:2px solid #cbd5e1; transition: all .4s; }
+  .tstep.lit .dot { background:var(--accent); color:#fff; border-color:var(--accent); transform:scale(1.12); }
+  .tstep.rollback .dot { background:var(--danger); border-color:var(--danger); color:#fff; }
+  .tstep .body { flex:1; padding-bottom:8px; border-bottom:1px dashed var(--line); }
+  .tstep .body b { font-size:14px; }
+  .tstep .body p { margin:2px 0 0; font-size:13px; color:var(--muted); }
+
+  /* ---------- table ---------- */
+  table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; border-radius:10px; overflow:hidden; border:1px solid var(--line); margin:14px 0; }
+  th,td { padding:9px 11px; text-align:left; border-bottom:1px solid #eef2f7; vertical-align:top; }
+  th { background:#f1f5f9; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  td code { font-size:12.5px; }
+
+  footer { margin-top:54px; padding:24px 0 0; border-top:2px solid var(--line); color:var(--muted); font-size:14px; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width:640px){
+    header h1 { font-size:22px; }
+    .ladder { grid-template-columns:1fr; }
+    .shards { grid-template-columns: repeat(2,1fr); }
+    .race { grid-template-columns:1fr; }
+    h2 { font-size:19px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="pulse"></div>
+  <h1>PulsePoint at Scale</h1>
+  <p class="sub">Multi-tenancy &amp; scalability design — from a suggestion box to a stadium turnstile.</p>
+  <div class="tagrow">
+    <span>40,000 tenants</span><span>250k events/sec peak</span><span>1 whale = 30% of load</span><span>&lt;300ms p95 SLA</span>
+  </div>
+</header>
+
+<nav class="toc"><div class="inner">
+  <a href="#shift">The shift</a>
+  <a href="#math">The math</a>
+  <a href="#placement">1 · Placement</a>
+  <a href="#tiers">2 · Tiers</a>
+  <a href="#fairness">3 · Fairness</a>
+  <a href="#migration">4 · Migration</a>
+  <a href="#ingest">5 · Idempotency</a>
+  <a href="#reads">6 · Rollups</a>
+  <a href="#schema">7 · Schema</a>
+  <a href="#cost">8 · Cost</a>
+  <a href="#next">What breaks next</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ================= THE SHIFT ================= -->
+<section id="shift" class="reveal">
+  <h2><span class="num">▸</span> What actually changed</h2>
+  <p class="lead">One change reframes the entire problem.</p>
+  <p>Round one collected <b>feedback</b> — a human clicks "submit bug" a few times a day. That is <b>human-paced</b> traffic: slow, bursty, forgiving. Round two adds <b>analytics events</b> — every page view and click, fired automatically by a snippet with no human present. That is <b>machine-paced</b> traffic, and the numbers are a different <em>kind</em> of problem, not a bigger version of the old one.</p>
+  <div class="note">🪣 <b>The analogy:</b> round one was a <b>suggestion box</b> in a shop — someone drops a card in now and then. Round two is a <b>stadium turnstile counter</b> during a match. Same idea (counting things), completely different engineering. You don't build a turnstile the way you build a suggestion box.</div>
+  <p>The single most important fact in this whole document: <b>load is not evenly spread.</b> A power law rules — the top 0.5% of tenants generate ~80% of events, and one tenant (the "whale") does ~15,000/sec <em>by itself</em>. Every design decision below flows from confronting that.</p>
+  <div class="powerlaw" id="powerlaw"></div>
+  <div class="pl-legend">
+    <span>◼ each bar = one tenant's event rate</span>
+    <span><b>◼ the whale</b> — bigger than a single database node can hold</span>
+  </div>
+</section>
+
+<!-- ================= THE MATH ================= -->
+<section id="math" class="reveal">
+  <h2><span class="num">$</span> Show the arithmetic</h2>
+  <p class="lead">Scalability without numbers is fiction. These four numbers drive every decision.</p>
+  <div class="mathgrid">
+    <div class="stat"><div class="big" data-count="50" data-suffix=" MB/s">0</div><div class="lbl">avg write bandwidth<br>50k/s × 1 KB</div></div>
+    <div class="stat"><div class="big" data-count="250" data-suffix=" MB/s">0</div><div class="lbl">peak bandwidth<br>250k/s × 1 KB</div></div>
+    <div class="stat warn-stat"><div class="big" data-count="130" data-suffix=" TB">0</div><div class="lbl">raw, 30 days<br>the storage trap</div></div>
+    <div class="stat warn-stat"><div class="big" data-count="39" data-suffix=" TB">0</div><div class="lbl">the whale alone<br>30 days, one tenant</div></div>
+  </div>
+  <h3>How we get there</h3>
+  <table>
+    <tr><th>Quantity</th><th>Arithmetic</th><th>Result</th></tr>
+    <tr><td>Raw storage, 30d</td><td>50k/s × 1 KB = 50 MB/s × 86,400 s = 4.3 TB/day × 30</td><td><b>~130 TB</b></td></tr>
+    <tr><td>Peak write bandwidth</td><td>250k/s × 1 KB</td><td><b>250 MB/s</b> sustained — needs many ingest nodes + a queue</td></tr>
+    <tr><td>The whale alone</td><td>15k/s × 1 KB = 15 MB/s × 86,400 × 30</td><td><b>~39 TB/30d</b> — more than one node holds comfortably</td></tr>
+    <tr><td>Ingest nodes</td><td>250 MB/s ÷ ~25k events/node safely</td><td><b>~10 nodes</b> at peak (+ headroom)</td></tr>
+  </table>
+  <div class="warn">⚠️ <b>The trap:</b> 130 TB of raw events in a fast database is brutally expensive, and you can't query it in 300ms. The math <em>forces</em> two decisions: <b>(a)</b> delete raw events after 30 days, and <b>(b)</b> pre-compute <b>rollups</b> so the dashboard never scans raw. The whale's 39 TB is mathematical <em>proof</em> it cannot live on a shared box.</div>
+  <div class="yours">💡 <b>Your instinct, confirmed:</b> you said "we don't need blob storage, we're just gathering analytics." Right for the <b>fast path</b> — events are tiny structured rows, not files. The nuance: cheap object storage (S3) is the <b>cold attic</b> where raw events retire after 30 days, at pennies/TB. No blob for serving; yes blob for archiving.</div>
+</section>
+
+<!-- ================= 1. PLACEMENT ================= -->
+<section id="placement" class="reveal">
+  <h2><span class="num">1</span> Placement &amp; sharding</h2>
+  <p class="lead">How do 40,000 tenants spread across infrastructure — and what happens when one tenant is bigger than a node?</p>
+  <p>The naïve answer is <code>hash(tenant_id) % N</code>: hash the tenant and mod by the number of shards. It spreads <em>tenants</em> evenly — but it dumps the <b>whale</b> entirely onto one shard, and that shard melts. Press the button and watch.</p>
+  <div class="demo">
+    <div class="bar">
+      <button class="btn danger" onclick="placeHash()">Place by hash(tenant_id)</button>
+      <button class="btn good" onclick="placeDirectory()">Place by directory + split whale</button>
+      <button class="btn" onclick="resetShards()">Reset</button>
+    </div>
+    <div class="shards" id="shards"></div>
+    <div class="demo-caption" id="shardCap">Two strategies, same whale. Hash sends it all to one shard. A directory lets us put the whale on its own dedicated shard.</div>
+  </div>
+  <h3>The design</h3>
+  <ul>
+    <li><b>Shard key:</b> <code>tenant_id</code> — keeps all of one tenant's data co-located, so every query and every rollup stays on a single shard (no cross-shard joins).</li>
+    <li><b>Placement is a lookup, not a formula.</b> A small <b>tenant directory</b> maps <code>tenant_id → (region, shard, tier)</code>. Because it's a lookup, we can <em>move</em> a tenant by editing one row — impossible with a hard-coded hash.</li>
+    <li><b>The whale gets its own shard.</b> When a tenant exceeds a pooled shard's capacity, the directory points it at a dedicated node. Skew is handled by <em>placement</em>, not by pretending load is uniform.</li>
+    <li><b>Geo first.</b> Region is the outer key (EU tenants → EU shards) for latency and data residency; the directory picks a shard <em>within</em> the region.</li>
+  </ul>
+  <div class="yours">💡 <b>Your idea:</b> "geo-shard by region A/B/C/D, then follow-the-sun to save cost." Adopted as the outer layer — it answers the EU-residency live question for free. The gap you didn't see: region spreads <em>tenants</em>, but the whale lives in <em>one</em> region, so you still need the directory to split it onto its own box <em>inside</em> that region. Geography is the first cut, not the whole answer.</div>
+</section>
+
+<!-- ================= 2. TIERS ================= -->
+<section id="tiers" class="reveal">
+  <h2><span class="num">2</span> Isolation tiers &amp; cells</h2>
+  <p class="lead">Free/Pro share pooled infrastructure; Enterprise buys isolation. Design the spectrum and the upgrade path.</p>
+  <div class="ladder">
+    <div class="rung pooled">
+      <h4>🏢 Pooled</h4>
+      <p style="font-size:12.5px;color:var(--muted);margin:0">Free &amp; Pro — many tenants share one database.</p>
+      <ul><li>Cheapest per tenant</li><li>RLS keeps data separate</li><li>Shares CPU &amp; disk</li></ul>
+      <span class="blast hi">blast radius: shard</span>
+    </div>
+    <div class="rung cell">
+      <h4>🏘️ Cell / Pod</h4>
+      <p style="font-size:12.5px;color:var(--muted);margin:0">Pro+ &amp; small Enterprise — a bounded group on its own stack.</p>
+      <ul><li>Isolated from other cells</li><li>Capped tenant count</li><li>Independent deploys</li></ul>
+      <span class="blast mid">blast radius: one cell</span>
+    </div>
+    <div class="rung dedicated">
+      <h4>🏠 Dedicated</h4>
+      <p style="font-size:12.5px;color:var(--muted);margin:0">Enterprise &amp; the whale — their own database.</p>
+      <ul><li>SLA guarantee</li><li>Data residency</li><li>Subscription pays for it</li></ul>
+      <span class="blast lo">blast radius: self only</span>
+    </div>
+  </div>
+  <div class="note">🏠 <b>Housing analogy:</b> Free is a <b>shared apartment</b>, a cell is a <b>small building</b>, dedicated is a <b>private house</b>. Upgrading means <em>moving house</em> (migrating data) — not rebuilding the city. The app code is identical across tiers; only <em>placement</em> changes.</div>
+  <div class="yours">💡 <b>Your best idea:</b> "when Enterprise hits the limit, sell them premium hosting / a dedicated DB, and their subscription pays for it." This is the strongest move in the whole session — you fused the <b>technical tier</b> (dedicated DB + migration) with the <b>pricing tier</b>. The dedicated database <em>is</em> the product; the live migration is <em>how you deliver it</em>. Tiers map directly to cost, which is exactly what the rubric rewards.</div>
+</section>
+
+<!-- ================= 3. FAIRNESS ================= -->
+<section id="fairness" class="reveal">
+  <h2><span class="num">3</span> Noisy-neighbor &amp; fairness</h2>
+  <p class="lead">Stop one tenant from degrading everyone else — with per-tenant, tier-aware limits.</p>
+  <p>This is the production symptom "the whale's spikes cause dashboard latency for unrelated tenants." The fix is a <b>per-tenant token-bucket rate limiter</b> plus <b>fair queuing</b>, so a flood from one tenant can't starve another. Press <em>Start flood</em>: the abuser (amber) tries to send far over its limit while the good tenant (green) sends a normal trickle. Watch whose latency stays flat.</p>
+  <div class="demo">
+    <div class="bar">
+      <button class="btn primary" id="floodBtn" onclick="toggleFlood()">Start flood</button>
+      <button class="btn" id="bhToggle" onclick="toggleBulkhead()">Bulkhead: ON</button>
+    </div>
+    <div class="laneset">
+      <div class="lane good"><span class="who">😊 Good tenant</span><div class="track"><div class="served" id="goodServed"></div></div><span class="lat" id="goodLat">12 ms</span></div>
+      <div class="lane abuser"><span class="who">😈 Abuser</span><div class="track"><div class="served" id="abuserServed"></div><span class="rej" id="abuserRej"></span></div><span class="lat" id="abuserLat">12 ms</span></div>
+    </div>
+    <div class="demo-caption" id="fairCap">Bulkhead ON = each tenant has its own bucket. Turn it OFF to see the abuser drag the good tenant's latency up with it (the round-one shared world).</div>
+  </div>
+  <h3>What degradation feels like, per tier</h3>
+  <table>
+    <tr><th>Tier</th><th>Over the limit → behavior</th></tr>
+    <tr><td><b>Free</b></td><td><b>Hard cliff.</b> HTTP <code>429</code>, excess dropped. They didn't pay for a guarantee.</td></tr>
+    <tr><td><b>Pro</b></td><td><b>Soft throttle.</b> Slowed but accepted up to a burst ceiling.</td></tr>
+    <tr><td><b>Enterprise</b></td><td><b>Ramp, never a wall.</b> Burst absorbed (backpressure), overage billed, and the upsell-to-dedicated conversation triggers. You must <em>not</em> drop their data — that breaks the SLA.</td></tr>
+  </table>
+  <div class="yours">💡 <b>Your idea, corrected:</b> you wanted a <b>CAPTCHA on every event</b> to stop spam. Right goal, wrong tool here — analytics events are <b>machine-fired</b>, with no human to solve a CAPTCHA, and you'd be processing 50,000 CAPTCHAs/sec. CAPTCHA stays on the <em>human</em> feedback form (it already does). For the machine firehose, the anti-abuse tools are <b>signed tenant keys + per-tenant rate limits + idempotency</b>. The instinct (stop one actor spamming everyone) is exactly this section.</div>
+</section>
+
+<!-- ================= 4. MIGRATION ================= -->
+<section id="migration" class="reveal">
+  <h2><span class="num">4</span> Hot-tenant live migration</h2>
+  <p class="lead">The centerpiece. Move the whale to its own database with zero downtime and zero lost/double-counted events.</p>
+  <p>Detection comes first: the per-tenant metrics (next section) flag a tenant whose rate or storage crosses a threshold. Then the cutover runs as a sequence where <b>every step is reversible</b>. Press play.</p>
+  <div class="demo">
+    <div class="bar">
+      <button class="btn primary" onclick="runMigration()">▶ Play cutover</button>
+      <button class="btn danger" onclick="triggerRollback()">⤺ Trigger rollback</button>
+      <button class="btn" onclick="resetMigration()">Reset</button>
+    </div>
+    <div class="timeline" id="timeline">
+      <div class="tstep" data-step="0"><div class="dot">1</div><div class="body"><b>Dual-write</b><p>Start writing every new event to <em>both</em> old and new shard. No reads switch yet.</p></div></div>
+      <div class="tstep" data-step="1"><div class="dot">2</div><div class="body"><b>Backfill</b><p>Copy historical events to the new shard in the background while dual-write keeps it current.</p></div></div>
+      <div class="tstep" data-step="2"><div class="dot">3</div><div class="body"><b>Verify counts</b><p>Compare event counts &amp; rollup totals old vs new. They must match <em>exactly</em> before proceeding.</p></div></div>
+      <div class="tstep" data-step="3"><div class="dot">4</div><div class="body"><b>Cutover reads</b><p>Flip the directory entry → reads now hit the new shard. Keep dual-writing a little longer.</p></div></div>
+      <div class="tstep" data-step="4"><div class="dot">5</div><div class="body"><b>Decommission</b><p>Stop writing to the old shard, reclaim its space. Migration complete.</p></div></div>
+    </div>
+    <div class="demo-caption" id="migCap">Reads only move <em>after</em> counts match. If anything looks wrong before step 4, flip the directory back — the old shard never stopped receiving writes, so rollback is instant and lossless.</div>
+  </div>
+  <div class="warn">⚠️ <b>Why billing stays exact:</b> dual-write means no event is lost during the move. The verify step means we never cut over to a shard that's missing data. And because the old shard stays live until step 5, <b>rollback at any point before cutover loses nothing.</b> That rollback plan is what separates a real migration from a hand-wave.</div>
+</section>
+
+<!-- ================= 5. INGESTION / IDEMPOTENCY ================= -->
+<section id="ingest" class="reveal">
+  <h2><span class="num">5</span> Ingestion correctness (idempotency)</h2>
+  <p class="lead">The endpoint is public, clients retry, and usage drives billing — so you cannot over- or under-count.</p>
+  <p>Today's code (<code>feedback.ts</code>) generates the event ID <em>server-side</em> with <code>randomUUID()</code>, so a retried request becomes a <em>second</em> row — a double-count and a wrong invoice. The fix: the client sends a unique <b>idempotency key</b> per event; the server counts each key <b>once</b>. Send the same event three times (a retry storm) and watch each counter.</p>
+  <div class="demo">
+    <div class="bar">
+      <button class="btn primary" onclick="retryStorm()">⚡ Fire retry storm (same event ×3)</button>
+      <button class="btn" onclick="resetIdem()">Reset</button>
+    </div>
+    <div class="idem">
+      <div class="pktrack" id="pktrack"></div>
+    </div>
+    <div style="display:flex; gap:24px; justify-content:center; margin-top:16px;">
+      <div class="counterbox wrong"><div class="cnum" id="noKey">0</div><div class="clbl">No idempotency key<br>(today's code)</div></div>
+      <div class="counterbox exact"><div class="cnum" id="withKey">0</div><div class="clbl">With idempotency key<br>(the fix)</div></div>
+    </div>
+    <div class="demo-caption" id="idemCap">Same event, sent three times. Without a key: counted 3× → wrong bill. With a key: counted once → exact.</div>
+  </div>
+  <div class="yours">💡 <b>You named this one yourself:</b> "like not getting double-charged when you buy something online." Exactly right — that's textbook <b>idempotency</b>, the same mechanism Stripe uses (an <code>Idempotency-Key</code> header). Effectively-once aggregation: dedupe on the key, and late/out-of-order retries become harmless. This is the spike we'll build.</div>
+  <h3>Handling late &amp; out-of-order events</h3>
+  <p>Events carry a <b>client timestamp</b>, so an event that arrives 5 minutes late still lands in the correct time bucket. Rollups for a window stay "open" briefly to absorb stragglers, then seal. A nightly <b>reconciliation</b> job recomputes counts from raw and compares against what was billed — if they ever drift, we catch it before the invoice, not after.</p>
+</section>
+
+<!-- ================= 6. READS / ROLLUPS ================= -->
+<section id="reads" class="reveal">
+  <h2><span class="num">6</span> Read &amp; aggregation path</h2>
+  <p class="lead">Make "usage this month" return &lt;300ms p95 — against 250k writes/sec.</p>
+  <p>Today's <code>stats.ts</code> runs <code>GROUP BY</code> over every raw row, every time. With tens of millions of events this month, that can't finish in 300ms. The fix is <b>rollups</b>: a background job keeps a running daily total, so the dashboard reads ~30 tiny rows instead of scanning millions. Race them.</p>
+  <div class="demo">
+    <div class="bar"><button class="btn primary" onclick="runRace()">🏁 Run the query both ways</button></div>
+    <div class="race">
+      <div class="racer raw">
+        <h4>❌ Scan raw events</h4>
+        <div class="rows">GROUP BY over ~42,000,000 rows</div>
+        <div class="meter"><i id="rawMeter"></i></div>
+        <div class="ms" id="rawMs">0 ms</div>
+      </div>
+      <div class="racer rollup">
+        <h4>✅ Read rollups</h4>
+        <div class="rows">SUM over ~30 daily rows</div>
+        <div class="meter"><i id="rollupMeter"></i></div>
+        <div class="ms" id="rollupMs">0 ms</div>
+      </div>
+    </div>
+    <div class="demo-caption" id="raceCap">Same answer, two paths. Raw scan blows the SLA; the rollup read clears it with room to spare.</div>
+  </div>
+  <h3>The raw-vs-aggregate split</h3>
+  <table>
+    <tr><th>Layer</th><th>Holds</th><th>Serves</th><th>Lifetime</th></tr>
+    <tr><td><b>Hot (raw)</b></td><td>last 30 days of events</td><td>drill-down, recompute</td><td>30 days, then deleted</td></tr>
+    <tr><td><b>Warm (rollups)</b></td><td>daily/hourly totals</td><td>the dashboard SLA</td><td>kept indefinitely</td></tr>
+    <tr><td><b>Cold (archive)</b></td><td>raw, compressed in object storage</td><td>rare backfills</td><td>cheap, long-term</td></tr>
+  </table>
+  <div class="yours">💡 <b>Your caching idea, re-pointed:</b> you suggested caching <b>user info on login</b>. Low value — people log in once a day. The <b>huge</b> win is hiding in <code>feedback.ts:26</code>: a <code>SELECT … FROM tenants</code> runs on <em>every single event</em> → 50,000 DB round-trips/sec just to translate the key. Cache <em>that</em> lookup (<code>key → tenant, tier, shard</code>) and you delete the hottest query in the system. Plus a short-lived cache on the rollup result. The catch caching makes you earn: <b>invalidation</b> — short expiries so stale data self-heals in seconds.</div>
+</section>
+
+<!-- ================= 7. SCHEMA ================= -->
+<section id="schema" class="reveal">
+  <h2><span class="num">7</span> Zero-downtime schema evolution</h2>
+  <p class="lead">Add a field to the event model across 40,000 tenants with no maintenance window.</p>
+  <p>Round one needed a maintenance window because one shared <code>ALTER TABLE</code> locks the table every tenant depends on. The fix is the <b>expand → migrate → contract</b> pattern, and it behaves differently per isolation model:</p>
+  <table>
+    <tr><th>Model</th><th>Adding a field</th><th>Trade-off</th></tr>
+    <tr><td><b>Shared table</b></td><td>One <code>ADD COLUMN</code> (nullable, no default) is instant in modern Postgres; backfill in batches.</td><td>One change for all — but one mistake hits everyone.</td></tr>
+    <tr><td><b>Schema-per-tenant</b></td><td>Roll the change tenant-by-tenant; pause/resume safely.</td><td>Isolated blast radius, but 40k migrations to orchestrate.</td></tr>
+    <tr><td><b>DB-per-tenant</b></td><td>Deploy per database, region by region.</td><td>Total isolation; slowest to roll out everywhere.</td></tr>
+  </table>
+  <div class="note">🔁 <b>Expand → migrate → contract:</b> (1) <em>expand</em> — add the new field as optional, deploy code that writes both old and new; (2) <em>migrate</em> — backfill existing rows in small batches; (3) <em>contract</em> — once everything uses the new field, drop the old one. At no point is the table locked or the app down. Same discipline as the live migration: every step is reversible.</div>
+</section>
+
+<!-- ================= 8. COST / OBSERVABILITY ================= -->
+<section id="cost" class="reveal">
+  <h2><span class="num">8</span> Per-tenant observability &amp; cost</h2>
+  <p class="lead">When the system is slow or expensive, <em>which tenant</em> caused it? And is a Free tenant losing us money?</p>
+  <p>Every log line, metric, and trace is <b>tagged with <code>tenant_id</code></b>. That single discipline lets you answer "who made us slow?" instantly (it's how migration detection finds the whale) and "what does each tenant cost?" by attributing writes, storage, and compute back to the tenant that caused them.</p>
+  <h3>Cost-to-serve, back-of-envelope</h3>
+  <table>
+    <tr><th>Tenant</th><th>Events/mo</th><th>Storage</th><th>Rough cost/mo</th><th>Verdict</th></tr>
+    <tr><td>One Free tenant</td><td>~small</td><td>megabytes</td><td><b>cents</b> — but fixed overhead (auth, dashboard, key lookup) dominates</td><td>profitable only in bulk</td></tr>
+    <tr><td>The whale</td><td>~39 billion</td><td>~39 TB raw + rollups</td><td><b>thousands</b> — dedicated DB + ingest + archive</td><td>must be priced as Enterprise</td></tr>
+  </table>
+  <div class="warn">📉 <b>Live-question preview — "Free tenants are collectively unprofitable."</b> Levers the cost model hands you: (1) tighten Free quotas / shorten Free retention (cheap, mild churn); (2) raise the rollup ratio so Free tenants cost near-zero to store; (3) pack more Free tenants per shard (cheaper per tenant, higher blast radius); (4) push heavy Free tenants toward Pro. Each lever trades cost against experience — and you can only reason about them <em>because</em> everything is tagged by tenant.</div>
+</section>
+
+<!-- ================= WHAT BREAKS NEXT ================= -->
+<section id="next" class="reveal">
+  <h2><span class="num">⚠</span> What breaks next (at 10×)</h2>
+  <p class="lead">The clearest seniority signal: name the <em>next</em> bottleneck and roughly when you hit it.</p>
+  <div class="cards">
+    <div class="card"><h4>1. The tenant directory</h4><p>At 400k tenants, the placement lookup itself becomes hot and a single point of failure. Fix is <b>incremental</b>: replicate it, cache it at every ingest node. Hit it around <b>5–10× tenant count</b>.</p></div>
+    <div class="card"><h4>2. A super-whale &gt; one node</h4><p>Today's whale fits one dedicated box. At 10× it won't — now you must shard <em>within</em> one tenant (by event-type or time). This is a <b>partial rewrite</b> of the placement assumption "one tenant = one shard." The real cliff.</p></div>
+    <div class="card"><h4>3. Rollup write amplification</h4><p>At 2.5M events/sec, even rollup updates contend. Fix is <b>incremental</b>: pre-aggregate in the stream (batch in memory before the DB) so the database sees thousands of updates/sec, not millions.</p></div>
+    <div class="card"><h4>4. Cross-region the dashboard</h4><p>A global Enterprise wants one dashboard over EU+US data that can't be moved. Needs <b>cross-region rollup federation</b> — query each region, merge. New subsystem, not a tweak.</p></div>
+  </div>
+  <div class="note">🎯 <b>The honest summary:</b> three of the four next bottlenecks are <em>incremental</em> (replicate, cache, batch). The one that's a partial rewrite is the <b>super-whale</b> — the day one tenant exceeds one node, "one tenant = one shard" breaks and you shard inside a tenant. Knowing <em>which</em> fixes are incremental vs. structural is the whole point of this section.</div>
+</section>
+
+<footer>
+  <p><b>PulsePoint at Scale</b> — design document &amp; learning artifact. Eight pillars, the arithmetic that drives them, and where it breaks next.</p>
+  <p style="font-size:13px;">Ideas you originated in our sessions and that made it into this design: <b>geo-sharding + follow-the-sun</b>, <b>tiers tied to pricing (premium hosting pays for the dedicated DB)</b>, and <b>idempotency ("don't get double-charged online")</b>. The corrections that taught the most: CAPTCHA is for human traffic not machine events, and the high-value cache is the per-event key lookup, not login.</p>
+</footer>
+
+</div>
+
+<script>
+// ---------- Reveal on scroll ----------
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+// ---------- Power law bars ----------
+(function(){
+  const host = document.getElementById('powerlaw');
+  const n = 48;
+  const heights = [];
+  for(let i=0;i<n;i++){ heights.push(Math.max(2, 30/Math.pow(i+1,1.1))); }
+  heights[0] = 100; // the whale
+  heights.forEach((h,i)=>{
+    const b=document.createElement('div');
+    b.className = 'pl-bar' + (i===0?' whale':'');
+    host.appendChild(b);
+    setTimeout(()=>{ b.style.height = h+'%'; }, 120 + i*18);
+  });
+})();
+
+// ---------- Animated math counters ----------
+function animateCount(el){
+  const target = +el.dataset.count, suffix = el.dataset.suffix||'';
+  const dur = 1100, t0 = performance.now();
+  function tick(t){
+    const p = Math.min(1,(t-t0)/dur);
+    const val = Math.round(target * (1-Math.pow(1-p,3)));
+    el.textContent = val + suffix;
+    if(p<1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+const mathIO = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{ if(e.isIntersecting){ animateCount(e.target); mathIO.unobserve(e.target);} });
+},{threshold:.6});
+document.querySelectorAll('.stat .big').forEach(el=>mathIO.observe(el));
+
+// ---------- Shard placement demo ----------
+const shardHost = document.getElementById('shards');
+function drawShards(config){
+  shardHost.innerHTML='';
+  config.forEach(s=>{
+    const d=document.createElement('div');
+    d.className='shard'+(s.hot?' hot':'')+(s.dedicated?' dedicated':'');
+    d.innerHTML = `<div class="sname">${s.name}</div>
+      <div style="font-size:11px;color:#64748b">${s.label}</div>
+      <div class="load"><i style="width:${s.load}%"></i></div>
+      ${s.melt?'<div class="melt">🔥</div>':''}`;
+    shardHost.appendChild(d);
+  });
+}
+function baseShards(){
+  return [0,1,2,3,4,5,6,7].map(i=>({name:'Shard '+i,label:'~5k tenants',load:18+Math.random()*8,hot:false,dedicated:false,melt:false}));
+}
+function resetShards(){ drawShards(baseShards()); document.getElementById('shardCap').textContent='Two strategies, same whale. Hash sends it all to one shard. A directory lets us put the whale on its own dedicated shard.'; }
+function placeHash(){
+  const s=baseShards();
+  s[7].load=100; s[7].hot=true; s[7].melt=true; s[7].label='+ THE WHALE';
+  drawShards(s);
+  document.getElementById('shardCap').innerHTML='<b>hash(tenant_id) → Shard 7.</b> The whale lands on one shard and melts it 🔥 — its 15k/sec saturates that box and every co-located tenant suffers. Hashing spreads tenants, not load.';
+}
+function placeDirectory(){
+  const s=baseShards();
+  s.push({name:'Whale-DB',label:'dedicated',load:72,hot:false,dedicated:true,melt:false});
+  drawShards(s);
+  document.getElementById('shardCap').innerHTML='<b>Directory → dedicated shard.</b> The whale gets its own database; the 8 pooled shards stay calm. Placement is a lookup we can edit, so skew is contained by design.';
+}
+resetShards();
+
+// ---------- Fairness / rate limiter demo ----------
+let flooding=false, bulkhead=true, fairTimer=null;
+let goodPct=0, abuserPct=0, abuserRejected=0;
+function toggleBulkhead(){
+  bulkhead=!bulkhead;
+  document.getElementById('bhToggle').textContent='Bulkhead: '+(bulkhead?'ON':'OFF');
+  document.getElementById('bhToggle').classList.toggle('active',!bulkhead);
+}
+function toggleFlood(){
+  flooding=!flooding;
+  document.getElementById('floodBtn').textContent = flooding?'Stop flood':'Start flood';
+  document.getElementById('floodBtn').classList.toggle('danger',flooding);
+  if(flooding && !fairTimer){ fairTimer=setInterval(stepFair,90); }
+}
+function stepFair(){
+  const good=document.getElementById('goodServed'), ab=document.getElementById('abuserServed');
+  const goodLat=document.getElementById('goodLat'), abLat=document.getElementById('abuserLat');
+  const rej=document.getElementById('abuserRej');
+  if(flooding){
+    // good tenant: steady trickle
+    goodPct=Math.min(100,goodPct+8);
+    // abuser: tries to flood
+    abuserPct=Math.min(100,abuserPct+22);
+  } else {
+    goodPct=Math.max(0,goodPct-6); abuserPct=Math.max(0,abuserPct-6);
+  }
+  good.style.width=goodPct+'%'; ab.style.width=abuserPct+'%';
+  if(bulkhead){
+    // abuser capped at its own bucket; good tenant unaffected
+    if(abuserPct>=60){ abuserPct=60; abuserRejected+=14; rej.textContent='⛔ '+abuserRejected+' rejected (429)'; }
+    goodLat.textContent='12 ms'; goodLat.style.color='var(--good)';
+    abLat.textContent='12 ms';
+    document.getElementById('fairCap').innerHTML='<b>Bulkhead ON.</b> Each tenant has its own token bucket. The abuser is capped at its quota (429s pile up), and the good tenant\'s latency never moves. Fairness holds.';
+  } else {
+    // shared world: abuser drags everyone's latency up
+    if(flooding){
+      const lat=12+Math.round(abuserPct*1.6);
+      goodLat.textContent=lat+' ms'; goodLat.style.color='var(--danger)';
+      abLat.textContent=lat+' ms';
+      rej.textContent='';
+      document.getElementById('fairCap').innerHTML='<b>Bulkhead OFF (round-one world).</b> One shared queue — the abuser\'s flood drags the <em>good</em> tenant\'s latency up to '+lat+' ms with it. This is the noisy-neighbor symptom in production.';
+    }
+  }
+}
+
+// ---------- Idempotency demo ----------
+let noKey=0, withKey=0, seenKeys=new Set();
+const pktrack=document.getElementById('pktrack');
+function resetIdem(){
+  noKey=0; withKey=0; seenKeys.clear();
+  document.getElementById('noKey').textContent='0';
+  document.getElementById('withKey').textContent='0';
+  pktrack.innerHTML='';
+  document.getElementById('idemCap').textContent='Same event, sent three times. Without a key: counted 3× → wrong bill. With a key: counted once → exact.';
+}
+function retryStorm(){
+  const eventKey='evt-7f3a'; // same event each retry
+  let delay=0;
+  for(let i=0;i<3;i++){
+    setTimeout(()=>{
+      // animate a packet flying across
+      const p=document.createElement('div');
+      p.className='packet'; p.textContent='↻';
+      pktrack.appendChild(p);
+      requestAnimationFrame(()=>{ p.style.transition='left 1s ease'; p.style.left='calc(100% - 30px)'; });
+      setTimeout(()=>p.remove(),1100);
+      // no-key path: always counts
+      noKey++; document.getElementById('noKey').textContent=noKey;
+      // with-key path: counts once
+      if(!seenKeys.has(eventKey)){ seenKeys.add(eventKey); withKey++; document.getElementById('withKey').textContent=withKey; }
+      if(i===2){
+        setTimeout(()=>{
+          document.getElementById('idemCap').innerHTML='Retry storm done. <b style="color:var(--danger)">No key → '+noKey+'</b> (over-counted, wrong invoice). <b style="color:var(--good)">With key → '+withKey+'</b> (exact). The key made the retries harmless.';
+        },1100);
+      }
+    }, delay);
+    delay+=420;
+  }
+}
+
+// ---------- Rollup race ----------
+function runRace(){
+  const rawMeter=document.getElementById('rawMeter'), rollupMeter=document.getElementById('rollupMeter');
+  const rawMs=document.getElementById('rawMs'), rollupMs=document.getElementById('rollupMs');
+  rawMeter.style.width='0%'; rollupMeter.style.width='0%';
+  rawMs.textContent='0 ms'; rollupMs.textContent='0 ms';
+  // rollup finishes fast
+  rollupMeter.style.transitionDuration='0.45s';
+  rawMeter.style.transitionDuration='2.6s';
+  requestAnimationFrame(()=>{ rollupMeter.style.width='100%'; rawMeter.style.width='100%'; });
+  // tick the numbers
+  let r1=0,r2=0;
+  const t1=setInterval(()=>{ r1+=Math.round(60+Math.random()*40); rawMs.textContent=r1+' ms'; if(r1>=2400){rawMs.textContent='2,400 ms ❌ (SLA blown)'; clearInterval(t1);} },110);
+  const t2=setInterval(()=>{ r2+=Math.round(6+Math.random()*4); rollupMs.textContent=r2+' ms'; if(r2>=40){rollupMs.textContent='40 ms ✅'; clearInterval(t2);} },45);
+  document.getElementById('raceCap').textContent='Same answer, two paths. Raw scan crawls toward ~2.4 s (SLA blown); the rollup read clears 300ms with 8× headroom.';
+}
+
+// ---------- Migration timeline ----------
+let migTimer=null;
+function lightSteps(upTo){
+  document.querySelectorAll('#timeline .tstep').forEach(s=>{
+    s.classList.remove('rollback');
+    s.classList.toggle('lit', +s.dataset.step <= upTo);
+  });
+}
+function resetMigration(){
+  if(migTimer) clearInterval(migTimer);
+  lightSteps(-1);
+  document.getElementById('migCap').textContent='Reads only move after counts match. If anything looks wrong before step 4, flip the directory back — the old shard never stopped receiving writes, so rollback is instant and lossless.';
+}
+function runMigration(){
+  if(migTimer) clearInterval(migTimer);
+  let step=0; lightSteps(0);
+  const caps=[
+    'Step 1 — dual-write started. Every new event now lands on both shards. Zero downtime; reads unchanged.',
+    'Step 2 — backfilling history in the background. Dual-write keeps the new shard current as we copy.',
+    'Step 3 — verifying counts. Old vs new must match exactly. This is the gate that protects billing.',
+    'Step 4 — counts matched ✓. Flipped the directory; reads now hit the new shard. Still dual-writing as a safety net.',
+    'Step 5 — decommissioned the old shard. Migration complete: zero downtime, zero lost or double-counted events.'
+  ];
+  document.getElementById('migCap').textContent=caps[0];
+  migTimer=setInterval(()=>{
+    step++;
+    if(step>4){ clearInterval(migTimer); return; }
+    lightSteps(step);
+    document.getElementById('migCap').textContent=caps[step];
+  },1300);
+}
+function triggerRollback(){
+  if(migTimer) clearInterval(migTimer);
+  lightSteps(2);
+  const s3=document.querySelector('#timeline .tstep[data-step="3"]');
+  s3.classList.add('lit','rollback');
+  document.getElementById('migCap').innerHTML='<b style="color:var(--danger)">Rollback.</b> Something looked wrong before cutover — flip the directory back to the old shard. Because the old shard never stopped taking writes, <b>nothing is lost</b>. We retry the move later. This rollback plan is the difference between a real migration and a hand-wave.';
+}
+resetMigration();
+</script>
+</body>
+</html>

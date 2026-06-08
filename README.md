@@ -47,6 +47,18 @@ Postgres 16
 
 More: [`docs/security.md`](./docs/security.md) · [`docs/architecture.md`](./docs/architecture.md)
 
+## PulsePoint at Scale — multi-tenancy & scalability (round two)
+
+Round two narrows to the two hardest pillars — **multi-tenancy and scalability** — at ~50k events/sec average, 250k/sec peak, under a power law where one tenant ("the whale") emits ~30% of all load. Three deliverables, all under `docs/scale/` and `spike/`:
+
+| Deliverable | Where | What it is |
+|---|---|---|
+| **Design doc (RFC)** | [`docs/scale/DESIGN.md`](./docs/scale/DESIGN.md) | Review-ready Markdown: all 8 pillars, capacity math, alternatives, failure modes, rollout, "what breaks next" |
+| **Interactive design doc** | [`docs/scale/pulsepoint-at-scale.html`](./docs/scale/pulsepoint-at-scale.html) | Mobile-friendly, animated walkthrough of the same design with 5 interactive demos |
+| **The spike** | [`spike/idempotent-ingestion/`](./spike/idempotent-ingestion/) | Zero-dependency idempotent-ingestion proof — `node bench.mjs` shows counts stay exact under a retry storm, with graphs |
+
+**One-command benchmark:** `cd spike/idempotent-ingestion && node bench.mjs` → writes `report.html` (graphs) and `results.json`. Headline: 10k events sent 3× → idempotent bills exactly 10,000 (20k retries absorbed); naïve bills 30,000 (3× wrong invoice).
+
 ## Repository layout
 
 ```text
@@ -57,6 +69,9 @@ docs/
   security.md        Threat model and guarantees
   archive/           Agent pipeline notes (build diary — optional reading)
   teaching/          HTML walkthroughs from architecture review
+  scale/             Round-two scale design (RFC + interactive artifact)
+spike/
+  idempotent-ingestion/   Round-two spike: idempotent ingestion + benchmark
 ```
 
 ## Built vs stubbed

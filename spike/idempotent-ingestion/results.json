@@ -1,0 +1,128 @@
+{
+  "generatedAt": "2026-06-08T23:43:51.797Z",
+  "node": "v22.22.2",
+  "headline": {
+    "uniqueEvents": 10000,
+    "retryMultiplier": 3,
+    "totalRequests": 30000,
+    "concurrency": 100,
+    "idempotent": {
+      "billedCount": 10000,
+      "deduped": 20000,
+      "exact": true,
+      "throughput": 9397,
+      "p50": 9.09,
+      "p95": 15.28,
+      "p99": 29.72
+    },
+    "naive": {
+      "billedCount": 30000,
+      "exact": false,
+      "overcountFactor": 3,
+      "throughput": 11940,
+      "p50": 7.94,
+      "p95": 9.83,
+      "p99": 12.6
+    }
+  },
+  "correctnessSweep": {
+    "uniqueEvents": 2000,
+    "points": [
+      {
+        "retry": 1,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 2000
+      },
+      {
+        "retry": 2,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 4000
+      },
+      {
+        "retry": 3,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 6000
+      },
+      {
+        "retry": 4,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 8000
+      },
+      {
+        "retry": 5,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 10000
+      },
+      {
+        "retry": 6,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 12000
+      },
+      {
+        "retry": 7,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 14000
+      },
+      {
+        "retry": 8,
+        "truth": 2000,
+        "idempotent": 2000,
+        "naive": 16000
+      }
+    ]
+  },
+  "loadSweep": {
+    "requestsPerLevel": 12000,
+    "points": [
+      {
+        "concurrency": 25,
+        "throughput": 12104,
+        "p50": 2,
+        "p95": 2.81,
+        "p99": 3.2
+      },
+      {
+        "concurrency": 50,
+        "throughput": 12465,
+        "p50": 3.92,
+        "p95": 4.87,
+        "p99": 5.47
+      },
+      {
+        "concurrency": 100,
+        "throughput": 12284,
+        "p50": 7.92,
+        "p95": 9.21,
+        "p99": 9.51
+      },
+      {
+        "concurrency": 200,
+        "throughput": 10457,
+        "p50": 16.96,
+        "p95": 19.91,
+        "p99": 53.93
+      },
+      {
+        "concurrency": 400,
+        "throughput": 10544,
+        "p50": 22.78,
+        "p95": 28.41,
+        "p99": 939.43
+      },
+      {
+        "concurrency": 800,
+        "throughput": 8950,
+        "p50": 29.64,
+        "p95": 106.86,
+        "p99": 1304.81
+      }
+    ]
+  }
+}
