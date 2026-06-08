@@ -1,0 +1,12 @@
+{
+  "name": "pulsepoint-spike-idempotent-ingestion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Part B spike: idempotent ingestion proven exact under a retry storm (zero dependencies).",
+  "type": "module",
+  "scripts": {
+    "bench": "node bench.mjs",
+    "start": "node server.mjs"
+  },
+  "engines": { "node": ">=18" }
+}
